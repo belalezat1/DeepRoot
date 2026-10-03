@@ -12,16 +12,16 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { DEMO_EMAIL_ROUTING } from "../ingest/connectors/index.js";
 import { InMemoryAccountDirectory } from "../store/reports.js";
-import { InMemorySourceStore } from "../store/sources.js";
+import { InMemorySourceSearch } from "../store/sources.js";
 import { handleIngestAppRecords, handleIngestEmails, handleSaveMeeting, type IngestDeps } from "./ingest.js";
 
 const user = { userId: DEMO_USERS.presenter };
-const deps = (): IngestDeps & { sources: InMemorySourceStore } => ({
+const deps = (): IngestDeps & { sources: InMemorySourceSearch } => ({
   accounts: new InMemoryAccountDirectory(ACCOUNTS),
-  sources: new InMemorySourceStore(),
+  sources: new InMemorySourceSearch(),
   emailRouting: DEMO_EMAIL_ROUTING,
 });
-const stored = (d: { sources: InMemorySourceStore }, accountId: string, userId: string = DEMO_USERS.presenter) =>
+const stored = (d: { sources: InMemorySourceSearch }, accountId: string, userId: string = DEMO_USERS.presenter) =>
   d.sources.search({ accountId, userId, query: "", top: 100 });
 
 describe("POST /api/ingest/emails", () => {
@@ -55,7 +55,7 @@ describe("POST /api/ingest/emails", () => {
 
   it("reports a database outage as INTEGRATION_UNAVAILABLE", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const d = { ...deps(), sources: { upsert: async () => Promise.reject(new Error("Cosmos 503")) } };
+    const d = { ...deps(), sources: { save: async () => Promise.reject(new Error("Cosmos 503")) } };
     expect(await handleIngestEmails({ user, body: { emails: [NORTHSTAR_CUSTOMER_EMAIL] } }, d)).toMatchObject({
       status: 503,
       body: { error: { code: "INTEGRATION_UNAVAILABLE" } },

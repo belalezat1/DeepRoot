@@ -3,14 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { AnalyzeDeps } from "../agent/analyze.js";
 import { InMemoryAnalysisStore } from "../store/analyses.js";
 import { InMemoryAccountDirectory } from "../store/reports.js";
-import { InMemorySourceStore } from "../store/sources.js";
+import { InMemorySourceSearch } from "../store/sources.js";
 import { ALL_SOURCES, IDS, QUOTES, reply, scriptedModel } from "../testing/agent.js";
 import { handleAnalyze, handleGetLatestAnalysis } from "./analyze.js";
 
 const user = { userId: DEMO_USERS.presenter };
 const deps = (model = scriptedModel(reply([]))): AnalyzeDeps => ({
   accounts: new InMemoryAccountDirectory(ACCOUNTS),
-  search: new InMemorySourceStore(ALL_SOURCES),
+  search: new InMemorySourceSearch(ALL_SOURCES),
   model,
   analyses: new InMemoryAnalysisStore(),
 });

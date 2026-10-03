@@ -38,7 +38,7 @@ function batch(body: unknown, field: string): unknown[] {
 async function save(sources: SourceWriter, records: SourceRecord[]): Promise<void> {
   if (records.length === 0) return;
   try {
-    await sources.upsert(records);
+    await Promise.all(records.map((r) => sources.save(r)));
   } catch (err) {
     console.error("Saving sources failed", err);
     throw new ApiFailure("INTEGRATION_UNAVAILABLE", "Could not save the sources. Please try again.");

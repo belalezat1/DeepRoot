@@ -5,7 +5,7 @@ import { DEMO_EMAIL_ROUTING } from "../ingest/connectors/index.js";
 import { ingestEmails } from "../ingest/email.js";
 import { InMemoryAnalysisStore } from "../store/analyses.js";
 import { InMemoryAccountDirectory } from "../store/reports.js";
-import { InMemorySourceStore, type SourceSearch } from "../store/sources.js";
+import { InMemorySourceSearch, type SourceSearch } from "../store/sources.js";
 import { ALL_SOURCES, IDS, LIVE_MEETING, QUOTES, reply, scriptedModel, type ScriptedModel } from "../testing/agent.js";
 import { ContextIsolationError, analyzeAccount, type AnalyzeDeps } from "./analyze.js";
 import { RETRY_NOTE, SYSTEM_PROMPT } from "./prompt.js";
@@ -17,7 +17,7 @@ const kindOf = (id: string) => {
   return s.app?.id ?? s.kind;
 };
 
-function deps(model: ScriptedModel, search: SourceSearch = new InMemorySourceStore(ALL_SOURCES)): AnalyzeDeps {
+function deps(model: ScriptedModel, search: SourceSearch = new InMemorySourceSearch(ALL_SOURCES)): AnalyzeDeps {
   return {
     accounts: new InMemoryAccountDirectory(ACCOUNTS),
     search,
@@ -108,7 +108,7 @@ describe("Northstar cross-source analysis", () => {
   });
 
   it("passes a focus through to retrieval", async () => {
-    const search = new InMemorySourceStore(ALL_SOURCES);
+    const search = new InMemorySourceSearch(ALL_SOURCES);
     const spy = vi.spyOn(search, "search");
     await analyzeAccount({ user: presenter, accountId: "northstar", focus: "Ohio withholding" }, deps(scriptedModel(reply([])), search));
     expect(spy).toHaveBeenCalledWith({ accountId: "northstar", userId: DEMO_USERS.presenter, query: "Ohio withholding", top: 25 });
@@ -122,7 +122,7 @@ describe("authorization happens before retrieval", () => {
   });
 
   it("returns NOT_FOUND for BetaCo without searching or calling the model", async () => {
-    const search = new InMemorySourceStore(ALL_SOURCES);
+    const search = new InMemorySourceSearch(ALL_SOURCES);
     const spy = vi.spyOn(search, "search");
     const model = scriptedModel();
     await expect(analyzeAccount({ user: presenter, accountId: "betaco" }, deps(model, search))).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -163,7 +163,7 @@ describe("defensive account isolation", () => {
 
   it("skips the model entirely when the account has no sources", async () => {
     const model = scriptedModel();
-    const analysis = await analyzeAccount({ user: presenter, accountId: "northstar" }, deps(model, new InMemorySourceStore([])));
+    const analysis = await analyzeAccount({ user: presenter, accountId: "northstar" }, deps(model, new InMemorySourceSearch([])));
     expect(analysis).toMatchObject({ findings: [], analyzedSourceIds: [] });
     expect(model.calls).toHaveLength(0);
   });
@@ -284,7 +284,7 @@ describe("saving the analysis to Cosmos", () => {
   });
 
   it("does not save an empty analysis", async () => {
-    const d = deps(scriptedModel(), new InMemorySourceStore([]));
+    const d = deps(scriptedModel(), new InMemorySourceSearch([]));
     await analyzeAccount({ user: presenter, accountId: "northstar" }, d);
     expect(await d.analyses.latest("northstar", DEMO_USERS.presenter)).toBeNull();
   });

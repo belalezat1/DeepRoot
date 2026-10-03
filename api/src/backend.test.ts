@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createBackend, type BackendAdapters } from "./backend.js";
 import { InMemoryAnalysisStore } from "./store/analyses.js";
 import { InMemoryAccountDirectory } from "./store/reports.js";
-import { InMemorySourceStore, type SourceSearch } from "./store/sources.js";
+import { InMemorySourceSearch, type SourceSearch } from "./store/sources.js";
 import { ALL_SOURCES, IDS, QUOTES, reply, scriptedModel } from "./testing/agent.js";
 import { wav } from "./testing/audio.js";
 import { checkSourceSearchIsolation, checkTranscriptSegments } from "./testing/conformance.js";
@@ -21,7 +21,7 @@ const diarized = [
 function adapters(overrides: Partial<BackendAdapters> = {}): BackendAdapters {
   return {
     accounts: new InMemoryAccountDirectory(ACCOUNTS),
-    sources: new InMemorySourceStore(ALL_SOURCES),
+    sources: new InMemorySourceSearch(ALL_SOURCES),
     analyses: new InMemoryAnalysisStore(),
     model: scriptedModel(oneFinding),
     transcribeAudio: async () => diarized,
@@ -34,7 +34,7 @@ const quiet = () => vi.spyOn(console, "error").mockImplementation(() => {});
 describe("SourceSearch contract", () => {
   it("a search returning permitted Northstar records lets the agent run", async () => {
     const search: SourceSearch = { search: async ({ accountId, userId }) => ALL_SOURCES.filter((s) => s.accountId === accountId && s.allowedUserIds.includes(userId)) };
-    const result = await analyze(adapters({ sources: Object.assign(new InMemorySourceStore(), search) }));
+    const result = await analyze(adapters({ sources: Object.assign(new InMemorySourceSearch(), search) }));
     expect(result.status).toBe(200);
     expect((result.body as AgentAnalysis).findings).toHaveLength(1);
   });
@@ -42,7 +42,7 @@ describe("SourceSearch contract", () => {
   it("a search that throws becomes 503 INTEGRATION_UNAVAILABLE, and the model is not called", async () => {
     quiet();
     const model = scriptedModel(oneFinding);
-    const sources = Object.assign(new InMemorySourceStore(), { search: async () => Promise.reject(new Error("Search 503: index unavailable")) });
+    const sources = Object.assign(new InMemorySourceSearch(), { search: async () => Promise.reject(new Error("Search 503: index unavailable")) });
     expect(await analyze(adapters({ sources, model }))).toEqual({
       status: 503,
       body: { error: { code: "INTEGRATION_UNAVAILABLE", message: "Source retrieval is unavailable right now. Please try again." } },
@@ -53,7 +53,7 @@ describe("SourceSearch contract", () => {
   it("a search missing its account filter is a 500 that names nothing, and the model is not called", async () => {
     quiet();
     const model = scriptedModel(oneFinding);
-    const sources = Object.assign(new InMemorySourceStore(), { search: async () => ALL_SOURCES });
+    const sources = Object.assign(new InMemorySourceSearch(), { search: async () => ALL_SOURCES });
     const result = await analyze(adapters({ sources, model }));
     expect(result.status).toBe(500);
     expect(JSON.stringify(result.body)).not.toMatch(/betaco|BLUEHERON|northstar-/i);
@@ -61,12 +61,12 @@ describe("SourceSearch contract", () => {
   });
 
   it("the conformance check passes a correct adapter and catches a leaky one", async () => {
-    await expect(checkSourceSearchIsolation(new InMemorySourceStore(ALL_SOURCES))).resolves.toBeUndefined();
+    await expect(checkSourceSearchIsolation(new InMemorySourceSearch(ALL_SOURCES))).resolves.toBeUndefined();
     const leaky: SourceSearch = { search: async ({ top }) => ALL_SOURCES.slice(0, top) };
     await expect(checkSourceSearchIsolation(leaky)).rejects.toThrow(/Returned betaco record|BetaCo/);
     const noUserFilter: SourceSearch = {
       search: async ({ accountId, top }) =>
-        new InMemorySourceStore(ALL_SOURCES.map((s) => ({ ...s, allowedUserIds: [DEMO_USERS.presenter] })))
+        new InMemorySourceSearch(ALL_SOURCES.map((s) => ({ ...s, allowedUserIds: [DEMO_USERS.presenter] })))
           .search({ accountId, userId: DEMO_USERS.presenter, query: "", top }),
     };
     await expect(checkSourceSearchIsolation(noUserFilter)).rejects.toThrow(/allowedUserIds filter is missing/);
@@ -75,7 +75,7 @@ describe("SourceSearch contract", () => {
 
 describe("SourceWriter contract", () => {
   it("records written through ingestion come back through search", async () => {
-    const backend = createBackend(adapters({ sources: new InMemorySourceStore() }));
+    const backend = createBackend(adapters({ sources: new InMemorySourceSearch() }));
     expect((await backend.ingestEmails({ user, body: { emails: [NORTHSTAR_CUSTOMER_EMAIL] } })).status).toBe(200);
     const result = await backend.analyze({ user, body: { accountId: "northstar" } });
     expect((result.body as AgentAnalysis).analyzedSourceIds).toEqual([IDS.customerEmail]);
@@ -83,7 +83,7 @@ describe("SourceWriter contract", () => {
 
   it("a write that throws becomes 503 INTEGRATION_UNAVAILABLE", async () => {
     quiet();
-    const sources = Object.assign(new InMemorySourceStore(), { upsert: async () => Promise.reject(new Error("Cosmos 429")) });
+    const sources = Object.assign(new InMemorySourceSearch(), { save: async () => Promise.reject(new Error("Cosmos 429")) });
     expect(await createBackend(adapters({ sources })).ingestEmails({ user, body: { emails: [NORTHSTAR_CUSTOMER_EMAIL] } })).toMatchObject({
       status: 503,
       body: { error: { code: "INTEGRATION_UNAVAILABLE" } },
@@ -166,7 +166,7 @@ describe("error boundaries", () => {
   it("signed out is 401, an inaccessible account is 404, and neither touches an adapter", async () => {
     const search = vi.fn(async () => [] as SourceRecord[]);
     const model = scriptedModel();
-    const backend = createBackend(adapters({ sources: Object.assign(new InMemorySourceStore(), { search }), model }));
+    const backend = createBackend(adapters({ sources: Object.assign(new InMemorySourceSearch(), { search }), model }));
     expect(await backend.analyze({ user: null, body: { accountId: "northstar" } })).toMatchObject({ status: 401, body: { error: { code: "UNAUTHENTICATED" } } });
     expect(await backend.analyze({ user, body: { accountId: "betaco" } })).toEqual({ status: 404, body: { error: { code: "NOT_FOUND", message: "Not found." } } });
     expect(await backend.latestAnalysis({ user, accountId: "betaco" })).toMatchObject({ status: 404 });

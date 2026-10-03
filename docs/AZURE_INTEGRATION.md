@@ -15,17 +15,17 @@ const backend = createBackend({ accounts, sources, analyses, model, transcribeAu
 | --- | --- | --- | --- | --- |
 | `AccountDirectory` | [access.ts](../api/src/access.ts) | `getAccount(accountId)` | `Account \| null` | generic 500 |
 | `SourceSearch` | [store/sources.ts](../api/src/store/sources.ts) | `search({ accountId, userId, query, top })` | `SourceRecord[]` | 503 INTEGRATION_UNAVAILABLE, model not called |
-| `SourceWriter` | [store/sources.ts](../api/src/store/sources.ts) | `upsert(records)` | `void` | 503 INTEGRATION_UNAVAILABLE |
+| `SourceWriter` | [store/sources.ts](../api/src/store/sources.ts) | `save(source)` | `void` | 503 INTEGRATION_UNAVAILABLE |
 | `AnalysisStore` | [store/analyses.ts](../api/src/store/analyses.ts) | `save(analysis)`, `latest(accountId, userId)` | `void`, `AgentAnalysis \| null` | save: logged, analysis still returned. latest: 503 |
 | `ChatModel` | [agent/model.ts](../api/src/agent/model.ts) | `complete({ system, user, maxTokens })` | reply text | 503 INTEGRATION_UNAVAILABLE |
 | `TranscribeAudio` | [ingest/meeting.ts](../api/src/ingest/meeting.ts) | `(audio: Uint8Array)` | `TranscriptSegment[]` | prepared transcript, else 502 TRANSCRIPTION_FAILED |
 
-The in-memory versions (`InMemorySourceStore`, `InMemoryAnalysisStore`, `InMemoryAccountDirectory`) are reference implementations. Copy their behavior.
+The in-memory versions (`InMemorySourceSearch`, `InMemoryAnalysisStore`, `InMemoryAccountDirectory`) are reference implementations. Copy their behavior.
 
 ### Expectations per adapter
 
 - **SourceSearch** must filter on `accountId` **and** `allowedUserIds` contains `userId` *inside the query*. Return whole records, newest first for an empty `query`, and at most `top`. If a filter is missed, the agent refuses to run (500) instead of analyzing the leak.
-- **SourceWriter** stores records exactly as given, including `allowedUserIds`, upserting by `id`. Seed with `SEED_ACCOUNTS` and `buildSeedSources()`.
+- **SourceWriter** stores each record exactly as given, including `allowedUserIds`, replacing any record with the same `id`. If you use AI Search, update the index too. Seed with `SEED_ACCOUNTS` and `buildSeedSources()`.
 - **AnalysisStore.latest** is scoped to `createdBy`, not just the account.
 - **ChatModel**: `system` is the system instruction and `user` is one user message. Use temperature 0 and JSON output mode. Return the text unchanged and do your retries inside. Never log `user`, because it contains account records.
 - **TranscribeAudio** receives a validated WAV. Return ordered segments; `speaker` is the raw diarization label (`"1"`, `"Guest-1"`). Leave `speaker` out if there is no diarization.
@@ -47,7 +47,9 @@ The in-memory versions (`InMemorySourceStore`, `InMemoryAnalysisStore`, `InMemor
 | `POST /api/agent/analyze` | `analyze` | `{ user, body }`, body is `AnalyzeRequest` |
 | `GET /api/accounts/{id}/analysis` | `latestAnalysis` | `{ user, accountId }` |
 
-Each method returns `{ status, body }`; send both as-is. `POST /api/reports/{id}/linear` is wired separately (`handleCreateLinearIssue`).
+Each method returns `{ status, body }`; send both as-is. The report routes are wired separately: `POST /api/reports` and `GET /api/reports/{id}` use `handleCreateReport` and `handleGetReport`, and `POST /api/reports/{id}/linear` uses `handleCreateLinearIssue`.
+
+`POST /api/reports` already saves the reviewed meeting as a source, keyed by the report ID. Use `POST /api/meetings` only for meetings that don't get a report. Calling both for one meeting stores it twice.
 
 ## Error codes
 

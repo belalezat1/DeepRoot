@@ -5,7 +5,7 @@ import type { AgentAnalysis } from "@deeproot/shared";
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryAnalysisStore } from "../store/analyses.js";
 import { InMemoryAccountDirectory } from "../store/reports.js";
-import { InMemorySourceStore, type SourceSearch } from "../store/sources.js";
+import { InMemorySourceSearch, type SourceSearch } from "../store/sources.js";
 import { ALL_SOURCES, IDS, LIVE_MEETING, QUOTES, reply, scriptedModel, type ScriptedModel } from "../testing/agent.js";
 import { analyzeAccount } from "./analyze.js";
 
@@ -16,7 +16,7 @@ const run = (model: ScriptedModel, opts: { search?: SourceSearch; extra?: typeof
     { user, accountId: "northstar", extraSources: opts.extra ?? [LIVE_MEETING] },
     {
       accounts: new InMemoryAccountDirectory(ACCOUNTS),
-      search: opts.search ?? new InMemorySourceStore(seeded),
+      search: opts.search ?? new InMemorySourceSearch(seeded),
       model,
       analyses: new InMemoryAnalysisStore(),
     },
@@ -109,7 +109,7 @@ describe("cross-source findings", () => {
 describe("duplicates", () => {
   it("a source both retrieved and passed as extra is sent once, and the extra (newer) copy wins", async () => {
     const indexed = { ...LIVE_MEETING, body: "Maya: An older, unreviewed transcript." };
-    const search = new InMemorySourceStore([...seeded, indexed]);
+    const search = new InMemorySourceSearch([...seeded, indexed]);
     const spy = vi.spyOn(search, "search");
     const model = scriptedModel(reply([finding([[IDS.meeting, QUOTES.meetingSlip]])]));
     const analysis = await run(model, { search });

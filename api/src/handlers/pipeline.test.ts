@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import { DEMO_EMAIL_ROUTING } from "../ingest/connectors/index.js";
 import { InMemoryAnalysisStore } from "../store/analyses.js";
 import { InMemoryAccountDirectory } from "../store/reports.js";
-import { InMemorySourceStore } from "../store/sources.js";
+import { InMemorySourceSearch } from "../store/sources.js";
 import { IDS, QUOTES, reply, scriptedModel } from "../testing/agent.js";
 import { wav } from "../testing/audio.js";
 import { handleAnalyze, handleGetLatestAnalysis } from "./analyze.js";
@@ -28,7 +28,7 @@ describe("backend pipeline", () => {
   it("takes Northstar from raw inputs to a stored, grounded cross-source analysis", async () => {
     const user = { userId: DEMO_USERS.presenter };
     const accounts = new InMemoryAccountDirectory(ACCOUNTS);
-    const sources = new InMemorySourceStore(); // stands in for Cosmos `sources`
+    const sources = new InMemorySourceSearch(); // stands in for Cosmos `sources`
     const analyses = new InMemoryAnalysisStore(); // stands in for Cosmos `analyses`
 
     // 1. Emails and internal app exports in. BetaCo rows are rejected for the presenter.

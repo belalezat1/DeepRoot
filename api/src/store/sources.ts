@@ -26,26 +26,23 @@ export interface SourceSearch {
 }
 
 /**
- * Stores ingested sources, upserting by `id` (re-ingesting the same input replaces it). Implemented
- * by the Azure teammate; whatever it writes, SourceSearch must be able to return. Store records as
- * given, including `allowedUserIds`. Throw on failure; the backend returns INTEGRATION_UNAVAILABLE (503).
+ * Stores a source (an ingested email or app record, or a reviewed meeting transcript) so later
+ * searches find it. Implemented by the Azure teammate (Cosmos DB, plus an AI Search index update if
+ * Search is used). Saving the same `id` replaces it. Store the record as given, including
+ * `allowedUserIds`. Throw on failure; the backend returns INTEGRATION_UNAVAILABLE (503).
  */
 export interface SourceWriter {
-  upsert(records: SourceRecord[]): Promise<void>;
+  save(source: SourceRecord): Promise<void>;
 }
 
 const words = (text: string) => text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 
 /** Reference implementation with the required filters and simple keyword ranking. For tests and local runs. */
-export class InMemorySourceStore implements SourceSearch, SourceWriter {
+export class InMemorySourceSearch implements SourceSearch, SourceWriter {
   private readonly sources = new Map<string, SourceRecord>();
 
   constructor(initial: SourceRecord[] = []) {
     for (const s of initial) this.sources.set(s.id, structuredClone(s));
-  }
-
-  async upsert(records: SourceRecord[]): Promise<void> {
-    for (const r of records) this.sources.set(r.id, structuredClone(r));
   }
 
   async search({ accountId, userId, query, top }: SourceSearchRequest): Promise<SourceRecord[]> {
@@ -57,5 +54,9 @@ export class InMemorySourceStore implements SourceSearch, SourceWriter {
       .sort((a, b) => b.score - a.score || b.s.occurredAt.localeCompare(a.s.occurredAt))
       .slice(0, top)
       .map(({ s }) => structuredClone(s));
+  }
+
+  async save(source: SourceRecord): Promise<void> {
+    this.sources.set(source.id, structuredClone(source));
   }
 }
