@@ -28,8 +28,6 @@ export type ReportDeps = {
 const MAX_TRANSCRIPT_CHARS = 20_000;
 /** Matches the agent: the most recent permitted sources the model sees alongside the meeting. */
 const MAX_CONTEXT_SOURCES = 25;
-/** Enough to find every source an older report cites. Swap for a by-ID lookup if accounts grow. */
-const MAX_LOOKUP_SOURCES = 200;
 
 /** POST /api/reports: turn a reviewed transcript into a saved, cited report. */
 export async function handleCreateReport(
@@ -87,9 +85,10 @@ export async function handleCreateReport(
       createdBy: user.userId,
     };
 
+    const sources = citedSources(report, index);
     await deps.sourceWriter.save(meeting); // so chat and later reports can cite this meeting
-    await deps.reports.save(report);
-    return { status: 201, body: { report, sources: citedSources(report, index) } };
+    await deps.reports.save({ ...report, citedSources: sources });
+    return { status: 201, body: { report, sources } };
   } catch (err) {
     return toErrorResult(err);
   }
@@ -98,20 +97,16 @@ export async function handleCreateReport(
 /** GET /api/reports/:id: a saved report, after checking the user may see its account. */
 export async function handleGetReport(
   input: { user: SignedInUser | null; reportId: string },
-  deps: Pick<ReportDeps, "accounts" | "search" | "reports">,
+  deps: Pick<ReportDeps, "accounts" | "reports">,
 ): Promise<HandlerResult<ReportResponse>> {
   try {
     const user = requireUser(input.user);
-    const report = await deps.reports.get(input.reportId);
-    if (!report) throw notFound();
-    await authorizeAccount(user, report.accountId, deps.accounts);
+    const stored = await deps.reports.get(input.reportId);
+    if (!stored) throw notFound();
+    await authorizeAccount(user, stored.accountId, deps.accounts);
 
-    const permitted = filterPermittedSources(
-      await deps.search.search({ accountId: report.accountId, userId: user.userId, query: "", top: MAX_LOOKUP_SOURCES }),
-      report.accountId,
-      user.userId,
-    );
-    return { status: 200, body: { report, sources: citedSources(report, new Map(permitted.map((s) => [s.id, s]))) } };
+    const { citedSources: sources = [], ...report } = stored;
+    return { status: 200, body: { report, sources } };
   } catch (err) {
     return toErrorResult(err);
   }

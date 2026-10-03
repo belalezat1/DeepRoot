@@ -92,6 +92,9 @@ export type PublicAccount = Omit<Account, "allowedUserIds">;
 export type BriefItem = {
   text: string;
   citations: Citation[];
+  /** From the analysis agent, so the UI can badge risks and blockers. */
+  type?: FindingType;
+  severity?: "low" | "medium" | "high" | null;
 };
 
 export type AccountBrief = {

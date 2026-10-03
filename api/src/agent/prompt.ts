@@ -45,7 +45,7 @@ OUTPUT: a single JSON object, no markdown:
 Return at most 12 findings, most important first.`;
 
 /** What the model sees of a record: no access lists, nothing it could mistake for permissions. */
-function promptRecord(s: SourceRecord) {
+export function promptRecord(s: SourceRecord) {
   const body = s.body.length > MAX_BODY_CHARS ? `${s.body.slice(0, MAX_BODY_CHARS)} [truncated]` : s.body;
   return {
     id: s.id,

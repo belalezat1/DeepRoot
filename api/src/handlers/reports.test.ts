@@ -56,7 +56,7 @@ describe("POST /api/reports", () => {
     expect(ids).toContain(SAMPLE_SOURCE_IDS.customerEmail);
     expect(sources.every((s) => !("allowedUserIds" in s))).toBe(true);
 
-    expect(await deps.reports.get(REPORT_ID)).toEqual(report);
+    expect(await deps.reports.get(REPORT_ID)).toEqual({ ...report, citedSources: sources });
     const saved = await deps.search.search({ accountId: "northstar", userId: presenter.userId, query: "", top: 100 });
     expect(saved.some((s) => s.id === MEETING_ID)).toBe(true);
   });

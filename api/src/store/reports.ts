@@ -1,16 +1,22 @@
-import type { Account, MeetingReport } from "@deeproot/shared";
+import type { Account, MeetingReport, PublicSource } from "@deeproot/shared";
 import type { AccountDirectory } from "../access.js";
+
+/**
+ * A report as stored: the report plus a snapshot of the sources it cites, taken when it was created,
+ * so reopening it never depends on a later search finding those sources again.
+ */
+export type StoredReport = MeetingReport & { citedSources?: PublicSource[] };
 
 /** Teammate 1 implements this with Cosmos DB; the in-memory version is for tests and local runs. */
 export interface ReportStore {
-  get(reportId: string): Promise<MeetingReport | null>;
-  save(report: MeetingReport): Promise<void>;
+  get(reportId: string): Promise<StoredReport | null>;
+  save(report: StoredReport): Promise<void>;
 }
 
 export class InMemoryReportStore implements ReportStore {
-  private readonly reports = new Map<string, MeetingReport>();
+  private readonly reports = new Map<string, StoredReport>();
 
-  constructor(initial: MeetingReport[] = []) {
+  constructor(initial: StoredReport[] = []) {
     for (const r of initial) this.reports.set(r.id, structuredClone(r));
   }
 
@@ -19,7 +25,7 @@ export class InMemoryReportStore implements ReportStore {
     return report ? structuredClone(report) : null;
   }
 
-  async save(report: MeetingReport) {
+  async save(report: StoredReport) {
     this.reports.set(report.id, structuredClone(report));
   }
 }
