@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+
+# Secrets: never commit keys
+.env
+.env.*
+!.env.example
+local.settings.json
+
+.DS_Store
+Thumbs.db

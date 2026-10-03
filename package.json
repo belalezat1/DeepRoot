@@ -1,0 +1,17 @@
+{
+  "name": "deeproot",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "demo"
+  ],
+  "scripts": {
+    "typecheck": "tsc -b shared demo",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
