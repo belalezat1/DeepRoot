@@ -3,8 +3,9 @@ import type { SourceRecord } from "@deeproot/shared";
 import { describe, expect, it, vi } from "vitest";
 import { DEMO_EMAIL_ROUTING } from "../ingest/connectors/index.js";
 import { ingestEmails } from "../ingest/email.js";
+import { InMemoryAnalysisStore } from "../store/analyses.js";
 import { InMemoryAccountDirectory } from "../store/reports.js";
-import { InMemorySourceSearch, type SourceSearch } from "../store/sources.js";
+import { InMemorySourceStore, type SourceSearch } from "../store/sources.js";
 import { ALL_SOURCES, IDS, LIVE_MEETING, QUOTES, reply, scriptedModel, type ScriptedModel } from "../testing/agent.js";
 import { ContextIsolationError, analyzeAccount, type AnalyzeDeps } from "./analyze.js";
 import { RETRY_NOTE, SYSTEM_PROMPT } from "./prompt.js";
@@ -16,8 +17,14 @@ const kindOf = (id: string) => {
   return s.app?.id ?? s.kind;
 };
 
-function deps(model: ScriptedModel, search: SourceSearch = new InMemorySourceSearch(ALL_SOURCES)): AnalyzeDeps {
-  return { accounts: new InMemoryAccountDirectory(ACCOUNTS), search, model, now: () => new Date("2026-10-03T12:00:00Z") };
+function deps(model: ScriptedModel, search: SourceSearch = new InMemorySourceStore(ALL_SOURCES)): AnalyzeDeps {
+  return {
+    accounts: new InMemoryAccountDirectory(ACCOUNTS),
+    search,
+    model,
+    analyses: new InMemoryAnalysisStore(),
+    now: () => new Date("2026-10-03T12:00:00Z"),
+  };
 }
 
 /** Records sent to the model, parsed back out of the user prompt. */
@@ -101,7 +108,7 @@ describe("Northstar cross-source analysis", () => {
   });
 
   it("passes a focus through to retrieval", async () => {
-    const search = new InMemorySourceSearch(ALL_SOURCES);
+    const search = new InMemorySourceStore(ALL_SOURCES);
     const spy = vi.spyOn(search, "search");
     await analyzeAccount({ user: presenter, accountId: "northstar", focus: "Ohio withholding" }, deps(scriptedModel(reply([])), search));
     expect(spy).toHaveBeenCalledWith({ accountId: "northstar", userId: DEMO_USERS.presenter, query: "Ohio withholding", top: 25 });
@@ -115,7 +122,7 @@ describe("authorization happens before retrieval", () => {
   });
 
   it("returns NOT_FOUND for BetaCo without searching or calling the model", async () => {
-    const search = new InMemorySourceSearch(ALL_SOURCES);
+    const search = new InMemorySourceStore(ALL_SOURCES);
     const spy = vi.spyOn(search, "search");
     const model = scriptedModel();
     await expect(analyzeAccount({ user: presenter, accountId: "betaco" }, deps(model, search))).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -156,7 +163,7 @@ describe("defensive account isolation", () => {
 
   it("skips the model entirely when the account has no sources", async () => {
     const model = scriptedModel();
-    const analysis = await analyzeAccount({ user: presenter, accountId: "northstar" }, deps(model, new InMemorySourceSearch([])));
+    const analysis = await analyzeAccount({ user: presenter, accountId: "northstar" }, deps(model, new InMemorySourceStore([])));
     expect(analysis).toMatchObject({ findings: [], analyzedSourceIds: [] });
     expect(model.calls).toHaveLength(0);
   });
@@ -256,5 +263,29 @@ describe("Azure model failures", () => {
     const model = scriptedModel(reply([{ type: "fact", title: "t", description: "d", citations: [] }], "Everything is on track."));
     const analysis = await analyzeAccount({ user: presenter, accountId: "northstar" }, deps(model));
     expect(analysis.summary).toBe("No findings could be supported with evidence from this account's sources.");
+  });
+});
+
+describe("saving the analysis to Cosmos", () => {
+  const oneFinding = reply([{ type: "blocker", title: "t", description: "d", citations: [{ sourceId: IDS.tracker, quote: QUOTES.trackerBlocked }] }]);
+
+  it("saves each analysis for the user who ran it", async () => {
+    const d = deps(scriptedModel(oneFinding));
+    const analysis = await analyzeAccount({ user: presenter, accountId: "northstar" }, d);
+    expect(analysis).toMatchObject({ id: "analysis-northstar-presenter-2026-10-03t12-00-00-000z", createdBy: DEMO_USERS.presenter });
+    expect(await d.analyses.latest("northstar", DEMO_USERS.presenter)).toEqual(analysis);
+    expect(await d.analyses.latest("northstar", "someone-else")).toBeNull();
+  });
+
+  it("still returns the analysis when saving fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const d = { ...deps(scriptedModel(oneFinding)), analyses: { save: async () => Promise.reject(new Error("Cosmos 503")), latest: async () => null } };
+    expect((await analyzeAccount({ user: presenter, accountId: "northstar" }, d)).findings).toHaveLength(1);
+  });
+
+  it("does not save an empty analysis", async () => {
+    const d = deps(scriptedModel(), new InMemorySourceStore([]));
+    await analyzeAccount({ user: presenter, accountId: "northstar" }, d);
+    expect(await d.analyses.latest("northstar", DEMO_USERS.presenter)).toBeNull();
   });
 });

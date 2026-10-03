@@ -208,13 +208,40 @@ export type AnalyzeRequest = {
 };
 
 export type AgentAnalysis = {
+  id: string;
   accountId: string;
+  createdBy: string; // the user it was generated for; stored analyses are only returned to them
   summary: string;
   findings: AgentFinding[]; // most severe and best corroborated first
+  /** Every source a finding cites (kind, title, author, app, body), so cards and drafts need no extra lookup. */
+  sources: PublicSource[];
   analyzedSourceIds: string[]; // every source the model saw
   generatedAt: string;
   /** What grounding removed: shown so nobody mistakes a trimmed result for the model's full output. */
   validation: { droppedCitations: number; droppedFindings: number };
+};
+
+// ---------- GET /api/accounts/:id/analysis ----------
+// Returns the caller's latest stored AgentAnalysis for the account (404 if none yet). The UI, morning
+// brief, action items, and Linear drafts read this instead of calling the model again.
+
+// ---------- Ingestion: POST /api/ingest/emails, POST /api/ingest/apps/:appId, POST /api/meetings ----------
+
+/** A raw input that did not become a source, and why. */
+export type IngestRejection = { index: number; recordId: string | null; reason: string };
+
+export type IngestResponse = {
+  ingested: Array<Pick<SourceRecord, "id" | "accountId" | "kind" | "title">>;
+  rejected: IngestRejection[];
+};
+
+/** Saves the presenter-reviewed transcript as the meeting source everything downstream cites. */
+export type SaveMeetingRequest = {
+  accountId: string;
+  meetingId: string; // re-saving with the same ID replaces the earlier version
+  transcript: string;
+  occurredAt: string;
+  title?: string;
 };
 
 // ---------- Errors (every endpoint) ----------

@@ -1,16 +1,18 @@
 import { ACCOUNTS, DEMO_USERS } from "@deeproot/demo";
 import { describe, expect, it, vi } from "vitest";
 import type { AnalyzeDeps } from "../agent/analyze.js";
+import { InMemoryAnalysisStore } from "../store/analyses.js";
 import { InMemoryAccountDirectory } from "../store/reports.js";
-import { InMemorySourceSearch } from "../store/sources.js";
+import { InMemorySourceStore } from "../store/sources.js";
 import { ALL_SOURCES, IDS, QUOTES, reply, scriptedModel } from "../testing/agent.js";
-import { handleAnalyze } from "./analyze.js";
+import { handleAnalyze, handleGetLatestAnalysis } from "./analyze.js";
 
 const user = { userId: DEMO_USERS.presenter };
 const deps = (model = scriptedModel(reply([]))): AnalyzeDeps => ({
   accounts: new InMemoryAccountDirectory(ACCOUNTS),
-  search: new InMemorySourceSearch(ALL_SOURCES),
+  search: new InMemorySourceStore(ALL_SOURCES),
   model,
+  analyses: new InMemoryAnalysisStore(),
 });
 
 describe("POST /api/agent/analyze", () => {
@@ -54,5 +56,19 @@ describe("POST /api/agent/analyze", () => {
     const result = await handleAnalyze({ user, body: { accountId: "northstar" } }, leaky);
     expect(result.status).toBe(500);
     expect(JSON.stringify(result.body)).not.toMatch(/betaco/i);
+  });
+});
+
+describe("GET /api/accounts/:id/analysis", () => {
+  it("returns the latest analysis after one has run, and 404 before", async () => {
+    const d = deps(scriptedModel(reply([{ type: "fact", title: "t", description: "d", citations: [{ sourceId: IDS.tracker, quote: QUOTES.trackerBlocked }] }])));
+    expect((await handleGetLatestAnalysis({ user, accountId: "northstar" }, d)).status).toBe(404);
+    const ran = await handleAnalyze({ user, body: { accountId: "northstar" } }, d);
+    expect(await handleGetLatestAnalysis({ user, accountId: "northstar" }, d)).toEqual({ status: 200, body: ran.body });
+  });
+
+  it("checks access first", async () => {
+    expect((await handleGetLatestAnalysis({ user: null, accountId: "northstar" }, deps())).status).toBe(401);
+    expect((await handleGetLatestAnalysis({ user, accountId: "betaco" }, deps())).status).toBe(404);
   });
 });

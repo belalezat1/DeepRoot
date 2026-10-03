@@ -104,7 +104,7 @@ export function routeEmail(email: RawEmail, routing: EmailRouting): string {
   );
   if (accountIds.size === 0) throw new ApiFailure("BAD_REQUEST", "not addressed to any account mailbox");
   if (accountIds.size > 1) {
-    throw new ApiFailure("BAD_REQUEST", `addressed to more than one account mailbox (${[...accountIds].join(", ")})`);
+    throw new ApiFailure("BAD_REQUEST", "addressed to more than one account mailbox");
   }
   return [...accountIds][0]!;
 }
@@ -147,7 +147,8 @@ export function ingestEmails(rawEmails: unknown[], routing: EmailRouting, accoun
       recordId = email.messageId;
       const accountId = routeEmail(email, routing);
       const account = byId.get(accountId);
-      if (!account) throw new ApiFailure("BAD_REQUEST", `mailbox maps to unknown account "${accountId}"`);
+      // Also how a mailbox for an account the caller cannot access is reported: without naming it.
+      if (!account) throw new ApiFailure("BAD_REQUEST", "account mailbox is not available");
 
       const record = emailToSource(email, account);
       if (seen.has(record.id)) throw new ApiFailure("BAD_REQUEST", "duplicate email in this batch");
