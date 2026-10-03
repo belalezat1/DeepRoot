@@ -4,10 +4,11 @@
   "type": "module",
   "workspaces": [
     "shared",
-    "demo"
+    "demo",
+    "api"
   ],
   "scripts": {
-    "typecheck": "tsc -b shared demo",
+    "typecheck": "tsc -b shared demo api",
     "test": "vitest run"
   },
   "devDependencies": {
