@@ -3,7 +3,14 @@
 
 // ---------- Core records (from BUILD_PLAN) ----------
 
-export type SourceKind = "email" | "meeting";
+// "internal_app" added: records pulled from internal tools through a declarative connector.
+export type SourceKind = "email" | "meeting" | "internal_app";
+
+/** The internal tool a record came from, so the UI can label it ("Implementation Tracker"). */
+export type SourceApp = {
+  id: string;
+  name: string;
+};
 
 export type SourceRecord = {
   id: string;
@@ -14,6 +21,7 @@ export type SourceRecord = {
   occurredAt: string; // ISO 8601
   body: string;
   allowedUserIds: string[];
+  app?: SourceApp; // set only when kind is "internal_app"
 };
 
 /** A SourceRecord as sent to the browser: the access list stays on the server. */
@@ -84,6 +92,9 @@ export type PublicAccount = Omit<Account, "allowedUserIds">;
 export type BriefItem = {
   text: string;
   citations: Citation[];
+  /** From the analysis agent, so the UI can badge risks and blockers. */
+  type?: FindingType;
+  severity?: "low" | "medium" | "high" | null;
 };
 
 export type AccountBrief = {
@@ -171,6 +182,69 @@ export type ClaimCheckResponse = {
   citations: Citation[];
   sources: PublicSource[];
   suggestedRewrite: string;
+};
+
+// ---------- POST /api/agent/analyze ----------
+// Cross-source analysis: authorized sources in, grounded findings out. Downstream features
+// (report, brief, chat, tickets) build on these findings instead of re-reading raw sources.
+
+export type FindingType = "fact" | "decision" | "commitment" | "risk" | "blocker" | "conflict" | "open_question";
+
+export type AgentFinding = {
+  id: string; // "finding-1", stable within one analysis
+  type: FindingType;
+  title: string;
+  description: string;
+  /** "stated": a source says it outright. "inferred": the agent connected sources to conclude it. */
+  basis: "stated" | "inferred";
+  owner: string | null; // null unless a cited quote names the owner
+  dueDate: string | null; // YYYY-MM-DD, null unless a cited quote states the date
+  severity: "low" | "medium" | "high" | null;
+  citations: Citation[]; // every one checked server-side: verbatim, permitted, same account
+  relatedSourceIds: string[]; // distinct cited sources; length > 1 means sources corroborate each other
+};
+
+export type AnalyzeRequest = {
+  accountId: string;
+  /** Optional search terms to focus retrieval; omitted means the account's most recent sources. */
+  focus?: string;
+};
+
+export type AgentAnalysis = {
+  id: string;
+  accountId: string;
+  createdBy: string; // the user it was generated for; stored analyses are only returned to them
+  summary: string;
+  findings: AgentFinding[]; // most severe and best corroborated first
+  /** Every source a finding cites (kind, title, author, app, body), so cards and drafts need no extra lookup. */
+  sources: PublicSource[];
+  analyzedSourceIds: string[]; // every source the model saw
+  generatedAt: string;
+  /** What grounding removed: shown so nobody mistakes a trimmed result for the model's full output. */
+  validation: { droppedCitations: number; droppedFindings: number };
+};
+
+// ---------- GET /api/accounts/:id/analysis ----------
+// Returns the caller's latest stored AgentAnalysis for the account (404 if none yet). The UI, morning
+// brief, action items, and Linear drafts read this instead of calling the model again.
+
+// ---------- Ingestion: POST /api/ingest/emails, POST /api/ingest/apps/:appId, POST /api/meetings ----------
+
+/** A raw input that did not become a source, and why. */
+export type IngestRejection = { index: number; recordId: string | null; reason: string };
+
+export type IngestResponse = {
+  ingested: Array<Pick<SourceRecord, "id" | "accountId" | "kind" | "title">>;
+  rejected: IngestRejection[];
+};
+
+/** Saves the presenter-reviewed transcript as the meeting source everything downstream cites. */
+export type SaveMeetingRequest = {
+  accountId: string;
+  meetingId: string; // re-saving with the same ID replaces the earlier version
+  transcript: string;
+  occurredAt: string;
+  title?: string;
 };
 
 // ---------- Errors (every endpoint) ----------

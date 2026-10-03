@@ -1,0 +1,21 @@
+{
+  "name": "sources",
+  "fields": [
+    { "name": "id", "type": "Edm.String", "key": true, "filterable": true },
+    { "name": "accountId", "type": "Edm.String", "filterable": true, "searchable": false },
+    { "name": "allowedUserIds", "type": "Collection(Edm.String)", "filterable": true, "searchable": false },
+    { "name": "kind", "type": "Edm.String", "filterable": true, "searchable": false },
+    { "name": "title", "type": "Edm.String", "searchable": true, "analyzer": "en.microsoft" },
+    { "name": "author", "type": "Edm.String", "searchable": true, "filterable": true },
+    { "name": "occurredAt", "type": "Edm.DateTimeOffset", "filterable": true, "sortable": true },
+    { "name": "body", "type": "Edm.String", "searchable": true, "analyzer": "en.microsoft" },
+    {
+      "name": "app",
+      "type": "Edm.ComplexType",
+      "fields": [
+        { "name": "id", "type": "Edm.String", "filterable": true, "searchable": false },
+        { "name": "name", "type": "Edm.String", "searchable": true }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 node_modules/
 dist/
+build/
 *.tsbuildinfo
 coverage/
 
@@ -9,5 +10,13 @@ coverage/
 !.env.example
 local.settings.json
 
+# Tooling
+.azure/
+.swa/
+*.log
+
 .DS_Store
 Thumbs.db
+
+# Built Functions app (npm run build:functions -w api)
+api/deploy/
