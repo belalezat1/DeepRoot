@@ -37,7 +37,11 @@ export function getDeps(env: NodeJS.ProcessEnv = process.env): FunctionDeps {
       fallbackTranscripts: { northstar: NORTHSTAR_MEETING_TRANSCRIPT },
       speakerNames: DEMO_SPEAKER_NAMES,
     },
-    backends: { ...adapters.backends, linear: linearConfig(env) ? "linear" : "fallback-link" },
+    backends: {
+      ...adapters.backends,
+      linear: linearConfig(env) ? "linear" : "fallback-link",
+      auth: env.DEMO_USER_ID ? `demo mode, everyone is ${env.DEMO_USER_ID}` : "sign-in",
+    },
   };
   return deps;
 }

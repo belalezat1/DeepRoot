@@ -22,6 +22,7 @@ param linearApiKey string
 
 param linearTeamId string
 param linearTeamKey string
+param demoUserId string
 
 var openAiApiVersion = '2024-10-21'
 var searchIndexName = 'sources'
@@ -191,7 +192,8 @@ resource staticWebAppSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
     empty(geminiApiKey) ? {} : { GEMINI_API_KEY: geminiApiKey },
     empty(linearApiKey) ? {} : { LINEAR_API_KEY: linearApiKey },
     empty(linearTeamId) ? {} : { LINEAR_TEAM_ID: linearTeamId },
-    empty(linearTeamKey) ? {} : { LINEAR_TEAM_KEY: linearTeamKey }
+    empty(linearTeamKey) ? {} : { LINEAR_TEAM_KEY: linearTeamKey },
+    empty(demoUserId) ? {} : { DEMO_USER_ID: demoUserId }
   )
 }
 

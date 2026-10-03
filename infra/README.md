@@ -49,6 +49,8 @@ npm run smoke:generate -w api                    # one plain and one structured 
 
 `api/src/functions/app.ts` wraps the backend handlers as HTTP functions (v4 programming model, Node 22). The signed-in user comes only from Static Web Apps' `x-ms-client-principal` header (`userDetails`), which Static Web Apps sets itself and strips from browser requests. `GET /api/health` reports which backend each service uses.
 
+**Demo mode (deployed default):** `DEMO_USER_ID=presenter` makes every request act as `presenter`, so the demo needs no sign-in. Access checks are unchanged, so the presenter still sees only Northstar, never BetaCo. Anyone with the URL acts as the presenter, which is acceptable only because all data is fictional. To require sign-in, set `demoUserId = ''` in `main.bicepparam` and redeploy.
+
 ```powershell
 npm run build:functions -w api   # bundles everything into api/deploy (git-ignored)
 .\infra\deploy-app.ps1           # build, then deploy the API and web\dist (or a placeholder page) to the Static Web App

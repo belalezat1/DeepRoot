@@ -7,9 +7,9 @@ import { handleCreateLinearIssue } from "../handlers/createLinearIssue.js";
 import { handleCreateReport, handleGetReport } from "../handlers/reports.js";
 import { handleTranscribe } from "../handlers/transcribe.js";
 import { getDeps } from "./deps.js";
-import { userFromPrincipal } from "./principal.js";
+import { requestUser } from "./principal.js";
 
-const user = (req: HttpRequest) => userFromPrincipal(req.headers.get("x-ms-client-principal"));
+const user = (req: HttpRequest) => requestUser(req.headers.get("x-ms-client-principal"), process.env.DEMO_USER_ID);
 
 function json(result: HandlerResult<unknown>): HttpResponseInit {
   return { status: result.status, jsonBody: result.body, headers: { "cache-control": "no-store" } };

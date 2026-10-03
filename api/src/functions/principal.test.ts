@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { userFromPrincipal } from "./principal.js";
+import { requestUser, userFromPrincipal } from "./principal.js";
 
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64");
 
@@ -15,5 +15,20 @@ describe("userFromPrincipal", () => {
     expect(userFromPrincipal("not base64 json")).toBeNull();
     expect(userFromPrincipal(encode({ userDetails: "" }))).toBeNull();
     expect(userFromPrincipal(encode({ userDetails: 42 }))).toBeNull();
+  });
+});
+
+describe("requestUser", () => {
+  const signedIn = encode({ userDetails: "someone" });
+
+  it("acts as the configured demo user for every request in demo mode", () => {
+    expect(requestUser(null, "presenter")).toEqual({ userId: "presenter" });
+    expect(requestUser(signedIn, "presenter")).toEqual({ userId: "presenter" });
+  });
+
+  it("uses the signed-in principal when demo mode is off", () => {
+    expect(requestUser(signedIn, undefined)).toEqual({ userId: "someone" });
+    expect(requestUser(signedIn, "")).toEqual({ userId: "someone" });
+    expect(requestUser(null, undefined)).toBeNull();
   });
 });

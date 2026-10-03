@@ -64,6 +64,9 @@ param geminiApiKey string = ''
 @secure()
 param linearApiKey string = ''
 
+@description('Demo mode: every API request acts as this user, with no sign-in. Empty requires Static Web Apps sign-in.')
+param demoUserId string = 'presenter'
+
 @description('Linear team UUID. Find it with: npm run linear:teams -w api')
 param linearTeamId string = ''
 
@@ -138,6 +141,7 @@ module resources 'resources.bicep' = {
     linearApiKey: linearApiKey
     linearTeamId: linearTeamId
     linearTeamKey: linearTeamKey
+    demoUserId: demoUserId
   }
 }
 
