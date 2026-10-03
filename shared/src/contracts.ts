@@ -181,6 +181,42 @@ export type ClaimCheckResponse = {
   suggestedRewrite: string;
 };
 
+// ---------- POST /api/agent/analyze ----------
+// Cross-source analysis: authorized sources in, grounded findings out. Downstream features
+// (report, brief, chat, tickets) build on these findings instead of re-reading raw sources.
+
+export type FindingType = "fact" | "decision" | "commitment" | "risk" | "blocker" | "conflict" | "open_question";
+
+export type AgentFinding = {
+  id: string; // "finding-1", stable within one analysis
+  type: FindingType;
+  title: string;
+  description: string;
+  /** "stated": a source says it outright. "inferred": the agent connected sources to conclude it. */
+  basis: "stated" | "inferred";
+  owner: string | null; // null unless a cited quote names the owner
+  dueDate: string | null; // YYYY-MM-DD, null unless a cited quote states the date
+  severity: "low" | "medium" | "high" | null;
+  citations: Citation[]; // every one checked server-side: verbatim, permitted, same account
+  relatedSourceIds: string[]; // distinct cited sources; length > 1 means sources corroborate each other
+};
+
+export type AnalyzeRequest = {
+  accountId: string;
+  /** Optional search terms to focus retrieval; omitted means the account's most recent sources. */
+  focus?: string;
+};
+
+export type AgentAnalysis = {
+  accountId: string;
+  summary: string;
+  findings: AgentFinding[]; // most severe and best corroborated first
+  analyzedSourceIds: string[]; // every source the model saw
+  generatedAt: string;
+  /** What grounding removed: shown so nobody mistakes a trimmed result for the model's full output. */
+  validation: { droppedCitations: number; droppedFindings: number };
+};
+
 // ---------- Errors (every endpoint) ----------
 
 export type ApiErrorCode =
