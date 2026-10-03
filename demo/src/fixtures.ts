@@ -141,6 +141,7 @@ export const IMPLEMENTATION_TRACKER_EXPORT: Array<Record<string, unknown>> = [
     status: "Blocked",
     assignee: null,
     due_date: "2026-10-08",
+    go_live: "2026-10-22", // stale: the client's first payroll is October 15 (a cross-source conflict)
     updated_by: "Jordan Ellis",
     updated_at: "2026-10-01T13:00:00Z",
     notes: "State tax mapping incomplete. Waiting on client's Ohio withholding account number. PA local tax codes missing for 14 employees.",

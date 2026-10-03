@@ -1,6 +1,7 @@
-import type { Citation, Commitment, Risk, SourceRecord, TicketDraft, TicketPriority } from "@deeproot/shared";
+import type { Citation, Commitment, Risk, TicketDraft, TicketPriority } from "@deeproot/shared";
+import { type CitationScope, validateCitation } from "../agent/citations.js";
+import { dateIsCited } from "../agent/findings.js";
 import { ApiFailure } from "../errors.js";
-import { verifyCitations } from "./citations.js";
 import type { ReportDraft } from "./generator.js";
 
 export type SanitizeResult = {
@@ -15,18 +16,22 @@ const MAX_TEXT = 2000;
 /**
  * Turns untrusted model output into a ReportDraft that is safe to save and show.
  * - Throws INVALID_MODEL_OUTPUT when the overall shape is unusable.
- * - Drops citations that are not verbatim quotes from a permitted source.
+ * - Drops citations that fail the shared check (agent/citations.ts): verbatim, permitted, same account.
  * - Drops decisions, commitments, and risks left with no valid citation.
- * - Sets owner to null unless the name appears in the evidence; sets malformed dates to null.
+ * - Same rules as agent findings: owner and dueDate survive only if a cited quote states them.
  */
-export function sanitizeReportDraft(raw: unknown, permitted: Map<string, SourceRecord>): SanitizeResult {
+export function sanitizeReportDraft(raw: unknown, scope: CitationScope): SanitizeResult {
   const dropped = { citations: 0, items: 0, owners: 0, dueDates: 0 };
   const r = raw as Partial<Record<keyof ReportDraft, unknown>> | null;
   if (!r || typeof r !== "object") invalid("Report is not an object.");
 
   const cite = (list: unknown): Citation[] => {
-    const kept = verifyCitations(list, permitted);
-    dropped.citations += (Array.isArray(list) ? list.length : 0) - kept.length;
+    const kept: Citation[] = [];
+    for (const rc of Array.isArray(list) ? list : []) {
+      const c = validateCitation(rc, scope);
+      if (!c) dropped.citations++;
+      else if (!kept.some((k) => k.sourceId === c.sourceId && k.startOffset === c.startOffset)) kept.push(c);
+    }
     return kept;
   };
 
@@ -44,12 +49,12 @@ export function sanitizeReportDraft(raw: unknown, permitted: Map<string, SourceR
     if (!text || citations.length === 0) return dropItem(dropped);
 
     let owner = optionalText(raw.owner);
-    if (owner && !ownerInEvidence(owner, citations, permitted)) {
+    if (owner && !citations.some((c) => c.quote.toLowerCase().includes(owner!.toLowerCase()))) {
       owner = null;
       dropped.owners++;
     }
     let dueDate = optionalText(raw.dueDate);
-    if (dueDate && !isIsoDate(dueDate)) {
+    if (dueDate && !dateIsCited(dueDate, citations)) {
       dueDate = null;
       dropped.dueDates++;
     }
@@ -92,17 +97,6 @@ function parseTicketDraft(raw: unknown): TicketDraft {
     acceptanceCriteria,
     priority,
   };
-}
-
-/** An owner counts as evidenced if their first name appears in a source the commitment cites. */
-function ownerInEvidence(owner: string, citations: Citation[], permitted: Map<string, SourceRecord>): boolean {
-  const firstName = owner.split(/\s+/)[0]!.toLowerCase();
-  if (firstName.length < 2) return false;
-  return citations.some((c) => permitted.get(c.sourceId)?.body.toLowerCase().includes(firstName));
-}
-
-function isIsoDate(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 }
 
 function dropItem(dropped: SanitizeResult["dropped"]): [] {

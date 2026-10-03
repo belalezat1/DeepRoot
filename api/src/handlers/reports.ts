@@ -9,15 +9,15 @@ import {
 } from "../access.js";
 import { ApiFailure, type HandlerResult, toErrorResult } from "../errors.js";
 import { meetingToSource } from "../ingest/meeting.js";
-import { indexSources } from "../reports/citations.js";
 import type { GenerateReport } from "../reports/generator.js";
 import { sanitizeReportDraft } from "../reports/validate.js";
 import type { ReportStore } from "../store/reports.js";
-import type { SourceStore } from "../store/sources.js";
+import type { SourceSearch, SourceWriter } from "../store/sources.js";
 
 export type ReportDeps = {
   accounts: AccountDirectory;
-  sources: SourceStore;
+  search: SourceSearch;
+  sourceWriter: SourceWriter;
   reports: ReportStore;
   /** Teammate 3's AI workflow; `sampleReportGenerator` until it lands. */
   generateReport: GenerateReport;
@@ -26,6 +26,10 @@ export type ReportDeps = {
 };
 
 const MAX_TRANSCRIPT_CHARS = 20_000;
+/** Matches the agent: the most recent permitted sources the model sees alongside the meeting. */
+const MAX_CONTEXT_SOURCES = 25;
+/** Enough to find every source an older report cites. Swap for a by-ID lookup if accounts grow. */
+const MAX_LOOKUP_SOURCES = 200;
 
 /** POST /api/reports: turn a reviewed transcript into a saved, cited report. */
 export async function handleCreateReport(
@@ -49,11 +53,11 @@ export async function handleCreateReport(
     });
 
     const stored = filterPermittedSources(
-      await deps.sources.listForAccount(account.id, user.userId),
+      await deps.search.search({ accountId: account.id, userId: user.userId, query: "", top: MAX_CONTEXT_SOURCES }),
       account.id,
       user.userId,
     );
-    const permitted = [...stored.filter((s) => s.id !== meeting.id), meeting];
+    const permitted = [meeting, ...stored.filter((s) => s.id !== meeting.id)].slice(0, MAX_CONTEXT_SOURCES);
 
     let raw: unknown;
     try {
@@ -70,8 +74,8 @@ export async function handleCreateReport(
       throw new ApiFailure("INTEGRATION_UNAVAILABLE", "The AI model is unavailable. Please try again.");
     }
 
-    const index = indexSources(permitted);
-    const { draft, dropped } = sanitizeReportDraft(raw, index);
+    const index = new Map(permitted.map((s) => [s.id, s]));
+    const { draft, dropped } = sanitizeReportDraft(raw, { accountId: account.id, userId: user.userId, sourcesById: index });
     if (Object.values(dropped).some((n) => n > 0)) console.warn(`Report ${reportId}: removed unsupported content`, dropped);
 
     const report: MeetingReport = {
@@ -83,7 +87,7 @@ export async function handleCreateReport(
       createdBy: user.userId,
     };
 
-    await deps.sources.save(meeting); // so chat and later reports can cite this meeting
+    await deps.sourceWriter.save(meeting); // so chat and later reports can cite this meeting
     await deps.reports.save(report);
     return { status: 201, body: { report, sources: citedSources(report, index) } };
   } catch (err) {
@@ -94,7 +98,7 @@ export async function handleCreateReport(
 /** GET /api/reports/:id: a saved report, after checking the user may see its account. */
 export async function handleGetReport(
   input: { user: SignedInUser | null; reportId: string },
-  deps: Pick<ReportDeps, "accounts" | "sources" | "reports">,
+  deps: Pick<ReportDeps, "accounts" | "search" | "reports">,
 ): Promise<HandlerResult<ReportResponse>> {
   try {
     const user = requireUser(input.user);
@@ -103,11 +107,11 @@ export async function handleGetReport(
     await authorizeAccount(user, report.accountId, deps.accounts);
 
     const permitted = filterPermittedSources(
-      await deps.sources.listForAccount(report.accountId, user.userId),
+      await deps.search.search({ accountId: report.accountId, userId: user.userId, query: "", top: MAX_LOOKUP_SOURCES }),
       report.accountId,
       user.userId,
     );
-    return { status: 200, body: { report, sources: citedSources(report, indexSources(permitted)) } };
+    return { status: 200, body: { report, sources: citedSources(report, new Map(permitted.map((s) => [s.id, s]))) } };
   } catch (err) {
     return toErrorResult(err);
   }

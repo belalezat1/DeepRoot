@@ -33,6 +33,7 @@ The meeting alone is vague. The other sources fill it in, and each one is a diff
 | 38 employees in OH and PA lack state tax setup; first payroll is October 15 | Customer email (plain text) |
 | Waiting on the Ohio withholding account number; launch at risk if it's not in by October 8 | Internal email (HTML) |
 | Tracker ticket IT-5120 is Blocked, Unassigned, due October 8 | Implementation Tracker |
+| Go-live is October 22, **contradicting** the October 15 first payroll | Implementation Tracker (stale) |
 | Ohio (24 employees) and Pennsylvania local tax (14 employees) settings are INCOMPLETE | Payroll Configuration Dashboard |
 | The launch "may slip"; nobody on the call names an owner | This meeting |
 | Ohio and Pennsylvania local taxes were flagged at kickoff | Kickoff meeting (seeded) |

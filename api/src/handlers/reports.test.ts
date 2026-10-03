@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { buildSeedSources } from "../ingest/seed.js";
 import { type GenerateReport, type ReportDraft, sampleReportGenerator } from "../reports/generator.js";
 import { InMemoryAccountDirectory, InMemoryReportStore } from "../store/reports.js";
-import { InMemorySourceStore } from "../store/sources.js";
+import { InMemorySourceSearch } from "../store/sources.js";
 import { type ReportDeps, handleCreateReport, handleGetReport } from "./reports.js";
 
 const presenter = { userId: DEMO_USERS.presenter };
@@ -12,9 +12,11 @@ const REPORT_ID = "report-test";
 const MEETING_ID = `northstar-meeting-${REPORT_ID}`;
 
 function setup(generateReport: GenerateReport = sampleReportGenerator) {
+  const store = new InMemorySourceSearch(buildSeedSources());
   const deps: ReportDeps = {
     accounts: new InMemoryAccountDirectory(ACCOUNTS),
-    sources: new InMemorySourceStore(buildSeedSources()),
+    search: store,
+    sourceWriter: store,
     reports: new InMemoryReportStore(),
     generateReport: vi.fn(generateReport),
     now: () => new Date("2026-10-02T15:05:00Z"),
@@ -55,7 +57,7 @@ describe("POST /api/reports", () => {
     expect(sources.every((s) => !("allowedUserIds" in s))).toBe(true);
 
     expect(await deps.reports.get(REPORT_ID)).toEqual(report);
-    const saved = await deps.sources.listForAccount("northstar", presenter.userId);
+    const saved = await deps.search.search({ accountId: "northstar", userId: presenter.userId, query: "", top: 100 });
     expect(saved.some((s) => s.id === MEETING_ID)).toBe(true);
   });
 
@@ -72,7 +74,7 @@ describe("POST /api/reports", () => {
 
   it("refuses a restricted account before reading sources or calling the model", async () => {
     const { deps, generate } = setup();
-    const listSpy = vi.spyOn(deps.sources, "listForAccount");
+    const listSpy = vi.spyOn(deps.search, "search");
 
     const res = await handleCreateReport({ user: presenter, body: { ...body, accountId: "betaco" } }, deps);
     const missing = await handleCreateReport({ user: presenter, body: { ...body, accountId: "nope" } }, deps);
@@ -131,15 +133,18 @@ describe("POST /api/reports", () => {
     expect(JSON.stringify({ report, sources })).not.toContain(BETACO_CANARY);
   });
 
-  it("keeps an owner whose name appears in the cited evidence", async () => {
+  it("keeps an owner and due date only when a cited quote states them", async () => {
     const { deps } = setup(
       draftWith({
         commitments: [
           {
             text: "Confirm the owner and follow up with Maya.",
-            owner: "Sam Ortiz",
+            owner: "Sam",
             dueDate: "2026-10-08",
-            citations: [{ sourceId: MEETING_ID, quote: "Let me confirm with the team and get back to you." }],
+            citations: [
+              { sourceId: MEETING_ID, quote: "Sam: Let me confirm with the team" },
+              { sourceId: SAMPLE_SOURCE_IDS.internalEmail, quote: "If the Ohio account number doesn't arrive by October 8" },
+            ],
           },
         ],
       }),
@@ -147,7 +152,7 @@ describe("POST /api/reports", () => {
 
     const { report } = (await handleCreateReport({ user: presenter, body }, deps)).body as ReportResponse;
 
-    expect(report.commitments[0]!.owner).toBe("Sam Ortiz");
+    expect(report.commitments[0]!.owner).toBe("Sam");
     expect(report.commitments[0]!.dueDate).toBe("2026-10-08");
   });
 
