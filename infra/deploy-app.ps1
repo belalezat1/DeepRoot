@@ -1,6 +1,6 @@
-# Builds the Functions bundle and deploys it, with the frontend, to the Static Web App.
-# Usage: .\infra\deploy-app.ps1                 (frontend from web\dist, or a placeholder page if it isn't built)
-#        .\infra\deploy-app.ps1 -AppDir <path>  (a different built frontend folder)
+# Builds the frontend (live API mode) and the Functions bundle, then deploys both to the Static Web App.
+# Usage: .\infra\deploy-app.ps1                 (builds web\ with VITE_API_MODE=live)
+#        .\infra\deploy-app.ps1 -AppDir <path>  (deploy an already-built frontend folder instead)
 param([string]$AppDir)
 
 $ErrorActionPreference = 'Stop'
@@ -11,6 +11,12 @@ try {
   npm run build:functions -w api
   if ($LASTEXITCODE -ne 0) { throw 'Functions build failed' }
 
+  if (-not $AppDir -and (Test-Path (Join-Path $root 'web\package.json'))) {
+    # Without VITE_API_MODE=live the frontend shows its built-in mock data instead of calling the API.
+    $env:VITE_API_MODE = 'live'
+    try { npm run build -w web } finally { Remove-Item Env:VITE_API_MODE }
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' }
+  }
   if (-not $AppDir) { $AppDir = Join-Path $root 'web\dist' }
   if (-not (Test-Path (Join-Path $AppDir 'index.html'))) {
     Write-Warning "No built frontend at $AppDir; deploying a placeholder page with the API."

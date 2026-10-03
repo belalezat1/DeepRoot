@@ -53,7 +53,7 @@ npm run smoke:generate -w api                    # one plain and one structured 
 
 ```powershell
 npm run build:functions -w api   # bundles everything into api/deploy (git-ignored)
-.\infra\deploy-app.ps1           # build, then deploy the API and web\dist (or a placeholder page) to the Static Web App
+.\infra\deploy-app.ps1           # build the frontend (live API mode) and the API, then deploy both
 ```
 
 Run locally by loading `api/.env` into the environment and starting the host; settings files with keys are never copied into `api/deploy`:
