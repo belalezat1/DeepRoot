@@ -27,6 +27,16 @@ function formatDate(value: string) {
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function sourcePreview(body: string) {
+  const paragraphs = body.trim().split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
+  const first = paragraphs.find((part) => !/^(hi|hello|dear)\b[^\n]*,?$/i.test(part)) || paragraphs[0] || '';
+  return first.replace(/\s+/g, ' ');
+}
+
+function authorName(author: string) {
+  return author.split('<')[0].trim() || author;
+}
+
 function EvidenceButtons({ citations, sources, onSelect }: { citations: Citation[]; sources: PublicSource[]; onSelect: (value: EvidenceSelection) => void }) {
   if (!citations.length) return null;
   return (
@@ -102,8 +112,8 @@ function WorkingGlyph() {
   return <span className="working-glyph" aria-hidden="true">✦</span>;
 }
 
-function SectionHeading({ kicker, title, description }: { kicker: string; title: string; description?: string }) {
-  return <div className="section-heading"><span className="eyebrow">{kicker}</span><h1>{title}</h1>{description && <p>{description}</p>}</div>;
+function SectionHeading({ kicker, title }: { kicker: string; title: string }) {
+  return <div className="section-heading"><span className="eyebrow">{kicker}</span><h1>{title}</h1></div>;
 }
 
 function App() {
@@ -297,46 +307,41 @@ function App() {
         </div>
       </header>
 
-      {loadState === 'loading' ? <main id="main-content" className="loading-page" aria-live="polite"><h1>Loading account workspace</h1><p>Gathering the brief and source correspondence.</p></main> :
+      {loadState === 'loading' ? <main id="main-content" className="loading-page" aria-live="polite"><h1>Loading account workspace</h1></main> :
       loadState === 'error' ? <main id="main-content" className="loading-page"><h1>Account workspace unavailable</h1><ErrorNotice error={pageError} /><button className="button button--primary" type="button" onClick={() => window.location.reload()}>Try again</button></main> :
       <motion.main key={view} id="main-content" className={view === 'inbox' ? 'container page-content page-content--inbox' : 'container page-content'} initial={magic.animate ? { opacity: 0, y: 14 } : false} animate={{ opacity: 1, y: 0 }} transition={{ duration: magic.animate ? 0.34 : 0, ease: [0.22, 1, 0.36, 1] }}>
         {view === 'overview' && brief && <>
-          <div className="page-lead">
+          <div className="page-lead page-lead--brief">
             <span className="fox-perch fox-perch--hero" data-fox-perch aria-hidden="true" />
-            <SectionHeading kicker="Account brief" title={brief.accountName} description="Review the export request and open questions before processing the meeting." />
+            <SectionHeading kicker="Account brief" title={brief.accountName} />
             <button type="button" className="button button--primary" onClick={() => goTo('meeting')}>Process meeting <span aria-hidden="true">→</span></button>
           </div>
           <div className="overview-grid" data-reveal>
             <article className="surface brief-card">
-              <div className="card-heading"><span className="section-index">01 / Context</span><h2>What we know</h2></div>
+              <div className="card-heading"><span className="section-index">01 / Summary</span><h2>Account summary</h2></div>
               <p className="brief-summary">{brief.brief}</p>
-              <div className="divider" />
-              <h3>Open questions</h3>
-              <ul className="question-list">{brief.openQuestions.map((item) => <li key={item}>{item}</li>)}</ul>
             </article>
-            <aside className="scope-card" aria-label="Export scope to confirm">
-              <span className="section-index">Scope to confirm</span>
-              <h2>Hold the Canada date</h2>
-              <p>Provincial tax fields and CAD mapping have not been scoped.</p>
-              <p className="scope-note">Confirm the work and owner before updating Acme on delivery.</p>
+            <aside className="surface questions-card" aria-label="Questions for the meeting">
+              <div className="card-heading"><span className="section-index">02 / Meeting prep</span><h2>Questions to resolve</h2></div>
+              <ul className="question-list">{brief.openQuestions.map((item) => <li key={item}>{item}</li>)}</ul>
             </aside>
           </div>
           <section className="source-section" aria-labelledby="source-heading" data-reveal>
             <span className="fox-perch fox-perch--section" data-fox-perch aria-hidden="true" />
-            <div className="section-top"><div><span className="section-index">02 / Evidence</span><h2 id="source-heading">Source correspondence</h2></div><div className="source-section-actions"><span className="source-count">{brief.sources.length} emails</span><button type="button" className="text-button" onClick={() => goTo('inbox')}>Open inbox ↗</button></div></div>
+            <div className="section-top"><div><span className="section-index">03 / Sources</span><h2 id="source-heading">Account emails</h2></div><div className="source-section-actions"><span className="source-count">{brief.sources.length} emails</span><button type="button" className="text-button" onClick={() => goTo('inbox')}>Open inbox ↗</button></div></div>
             <div className="source-grid">{brief.sources.map((source) => <button className="source-card" key={source.id} type="button" onClick={() => setEvidence({ sourceId: source.id })}>
-              <span className="source-date">Email · {formatDate(source.occurredAt)} · {source.author}</span>
+              <span className="source-date">{authorName(source.author)} · {formatDate(source.occurredAt)}</span>
               <h3>{source.title}</h3>
-              <p>{source.body}</p>
+              <p>{sourcePreview(source.body)}</p>
               <span className="text-link">Read source <span aria-hidden="true">→</span></span>
             </button>)}</div>
           </section>
         </>}
 
-        {view === 'inbox' && brief && <InboxView sources={brief.sources} transcript={transcript} report={report} onMeeting={() => goTo('meeting')} onReport={() => goTo('report')} live={isLive} />}
+        {view === 'inbox' && brief && <InboxView accountName={brief.accountName} sources={brief.sources} transcript={transcript} report={report} onMeeting={() => goTo('meeting')} onReport={() => goTo('report')} />}
 
         {view === 'meeting' && brief && <>
-          <div className="page-lead"><span className="fox-perch fox-perch--hero" data-fox-perch aria-hidden="true" /><SectionHeading kicker={`${brief.accountName} / Meeting`} title="Process meeting" description="Upload a WAV recording or use the prepared transcript. Review the text before generating a report." /></div>
+          <div className="page-lead"><span className="fox-perch fox-perch--hero" data-fox-perch aria-hidden="true" /><SectionHeading kicker={brief.accountName} title="Process meeting" /></div>
           <div className="meeting-layout" data-reveal>
             <article className="surface upload-card"><span className="fox-perch fox-perch--card" data-fox-perch aria-hidden="true" />
               <div className="card-heading"><span className="section-index">Step 1</span><h2>Add a recording</h2></div>
@@ -358,11 +363,10 @@ function App() {
               <ErrorNotice error={reportError} />
             </article>
           </div>
-          <p className="context-note">The report checks the meeting against Acme’s earlier emails, including the Canada requirement.</p>
         </>}
 
         {view === 'report' && report && ticket && <>
-          <div className="page-lead"><span className="fox-perch fox-perch--hero" data-fox-perch aria-hidden="true" /><SectionHeading kicker={`${brief?.accountName || 'Account'} / ${formatDate(report.createdAt)}`} title="Meeting report" description="Check each finding against its source, then review the proposed Linear issue." /></div>
+          <div className="page-lead"><span className="fox-perch fox-perch--hero" data-fox-perch aria-hidden="true" /><SectionHeading kicker={`${brief?.accountName || 'Account'} / ${formatDate(report.createdAt)}`} title="Meeting report" /></div>
           <div className="report-layout" data-reveal>
             <div className="report-main">
               <article className="surface report-summary"><span className="fox-perch fox-perch--card" data-fox-perch aria-hidden="true" /><div className="card-heading"><span className="section-index">Summary</span><h2>What happened</h2></div><p className="brief-summary">{report.summary}</p></article>
@@ -383,16 +387,15 @@ function App() {
               {report.linearIssue ? <div className="issue-success" role="status"><strong>Created in Linear</strong><a href={report.linearIssue.url} target="_blank" rel="noreferrer">Open {report.linearIssue.identifier} ↗</a></div> : previewIssue ? <div className="issue-success" role="status"><strong>Demo preview ready</strong><span>No issue was created. Connect the API to create one in Linear.</span></div> : <button type="button" className="button button--primary ticket-submit" onClick={() => void createIssue()} disabled={busy !== null}>{busy === 'issue' ? <><WorkingGlyph /> Creating issue…</> : isLive ? 'Create Linear issue' : 'Preview issue'}</button>}
             </aside>
           </div>
-          <div className="inline-next">Need another detail? <button className="text-button" type="button" onClick={() => goTo('explore')}>Ask and verify <span aria-hidden="true">→</span></button></div>
+          <div className="inline-next"><button className="text-button" type="button" onClick={() => goTo('explore')}>Ask and verify <span aria-hidden="true">→</span></button></div>
         </>}
 
         {view === 'explore' && brief && <>
-          <div className="page-lead"><span className="fox-perch fox-perch--hero" data-fox-perch aria-hidden="true" /><SectionHeading kicker={`${brief.accountName} / Evidence tools`} title="Ask and verify" description="Get sourced answers and check draft statements against this account’s records." /></div>
+          <div className="page-lead"><span className="fox-perch fox-perch--hero" data-fox-perch aria-hidden="true" /><SectionHeading kicker={brief.accountName} title="Ask and verify" /></div>
           <div className="explore-grid" data-reveal>
-            <article className="surface tool-card"><span className="fox-perch fox-perch--card" data-fox-perch aria-hidden="true" /><div className="card-heading"><span className="section-index">Account question</span><h2>Ask about the account</h2></div><p>Answers use the permitted emails and available meeting report.</p><form onSubmit={(event) => { event.preventDefault(); void askQuestion(); }}><label className="field" htmlFor="question"><span>Your question</span></label><textarea id="question" rows={3} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="What does Acme need from the export?" /><button type="submit" className="button button--primary" disabled={!question.trim() || chatBusy}>{chatBusy ? <><WorkingGlyph /> Finding sources…</> : 'Ask question'}</button></form><div className="suggestions"><span className="mini-label">Try a question</span><button type="button" onClick={() => void askQuestion('What is the Canada gap?')}>What is the Canada gap?</button><button type="button" onClick={() => void askQuestion('Who owns the export?')}>Who owns the export?</button></div><ErrorNotice error={chatError} />{chatAnswer && <div className="tool-result" aria-live="polite"><h3>Answer</h3><p>{chatAnswer.answer}</p><EvidenceButtons citations={chatAnswer.citations} sources={sources} onSelect={setEvidence} /></div>}</article>
-            <article className="surface tool-card"><div className="card-heading"><span className="section-index">Claim check</span><h2>Check a statement</h2></div><p>Compare client-facing wording with the available evidence.</p><form onSubmit={(event) => { event.preventDefault(); void checkClaim(); }}><label className="field" htmlFor="statement"><span>Draft statement</span></label><textarea id="statement" rows={3} value={statement} onChange={(event) => setStatement(event.target.value)} placeholder="Write a statement to verify…" /><button type="submit" className="button button--secondary" disabled={!statement.trim() || claimBusy}>{claimBusy ? <><WorkingGlyph /> Checking sources…</> : 'Check statement'}</button></form><ErrorNotice error={claimError} />{claimResult && <div className="tool-result" aria-live="polite"><span className={`verdict verdict--${claimResult.verdict}`}>{claimResult.verdict[0].toUpperCase() + claimResult.verdict.slice(1)}</span><p>{claimResult.explanation}</p><EvidenceButtons citations={claimResult.citations} sources={sources} onSelect={setEvidence} /><div className="rewrite"><h3>Suggested wording</h3><p>{claimResult.suggestedRewrite}</p></div></div>}</article>
+            <article className="surface tool-card"><span className="fox-perch fox-perch--card" data-fox-perch aria-hidden="true" /><div className="card-heading"><span className="section-index">Account question</span><h2>Ask about the account</h2></div><form onSubmit={(event) => { event.preventDefault(); void askQuestion(); }}><label className="field" htmlFor="question"><span>Your question</span></label><textarea id="question" rows={3} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="What does Acme need from the export?" /><button type="submit" className="button button--primary" disabled={!question.trim() || chatBusy}>{chatBusy ? <><WorkingGlyph /> Finding sources…</> : 'Ask question'}</button></form><div className="suggestions"><span className="mini-label">Try a question</span><button type="button" onClick={() => void askQuestion('What is the Canada gap?')}>What is the Canada gap?</button><button type="button" onClick={() => void askQuestion('Who owns the export?')}>Who owns the export?</button></div><ErrorNotice error={chatError} />{chatAnswer && <div className="tool-result" aria-live="polite"><h3>Answer</h3><p>{chatAnswer.answer}</p><EvidenceButtons citations={chatAnswer.citations} sources={sources} onSelect={setEvidence} /></div>}</article>
+            <article className="surface tool-card"><div className="card-heading"><span className="section-index">Claim check</span><h2>Check a statement</h2></div><form onSubmit={(event) => { event.preventDefault(); void checkClaim(); }}><label className="field" htmlFor="statement"><span>Draft statement</span></label><textarea id="statement" rows={3} value={statement} onChange={(event) => setStatement(event.target.value)} placeholder="Write a statement to verify…" /><button type="submit" className="button button--secondary" disabled={!statement.trim() || claimBusy}>{claimBusy ? <><WorkingGlyph /> Checking sources…</> : 'Check statement'}</button></form><ErrorNotice error={claimError} />{claimResult && <div className="tool-result" aria-live="polite"><span className={`verdict verdict--${claimResult.verdict}`}>{claimResult.verdict[0].toUpperCase() + claimResult.verdict.slice(1)}</span><p>{claimResult.explanation}</p><EvidenceButtons citations={claimResult.citations} sources={sources} onSelect={setEvidence} /><div className="rewrite"><h3>Suggested wording</h3><p>{claimResult.suggestedRewrite}</p></div></div>}</article>
           </div>
-          <p className="privacy-note">Account permissions are checked by the server before sources are retrieved.</p>
         </>}
       </motion.main>}
       <footer className="site-footer"><div className="container footer-inner"><span>Deeproot</span><span>GirlHacks 2026</span></div></footer>

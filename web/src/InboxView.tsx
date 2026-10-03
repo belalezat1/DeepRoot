@@ -39,12 +39,13 @@ function citedSourceIds(report: MeetingReport | null) {
   ].map((citation) => citation.sourceId));
 }
 
-export function InboxView({ sources, transcript, report, onMeeting, onReport, live }: { sources: PublicSource[]; transcript: string; report: MeetingReport | null; onMeeting: () => void; onReport: () => void; live: boolean }) {
+export function InboxView({ accountName, sources, transcript, report, onMeeting, onReport }: { accountName: string; sources: PublicSource[]; transcript: string; report: MeetingReport | null; onMeeting: () => void; onReport: () => void }) {
   const [search, setSearch] = useState('');
   const [folder, setFolder] = useState<'inbox' | 'starred'>('inbox');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [stars, setStars] = useState(() => new Set(sources.map((source) => source.id)));
 
+  const emailSources = sources.filter((source) => source.kind === 'email');
   const mail = useMemo(() => [
     ...sources.filter((source) => source.kind === 'email').map((source) => ({ id: source.id, sourceId: source.id, sender: nameFromAuthor(source.author), subject: source.title, body: source.body, date: source.occurredAt })),
     ...EVERYDAY_MAIL,
@@ -64,19 +65,39 @@ export function InboxView({ sources, transcript, report, onMeeting, onReport, li
   });
 
   return <div className="inbox-scene">
-    <div className="inbox-topbar"><div className="inbox-brand"><span className="inbox-mark" aria-hidden="true">M</span><strong>Gmail</strong><span className="inbox-demo-label">Demo mailbox</span></div><label className="inbox-search"><span aria-hidden="true">⌕</span><span className="sr-only">Search mail</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search mail" aria-label="Search mail" /></label><span className="inbox-avatar" aria-label="Demo account">D</span></div>
+    <div className="inbox-topbar">
+      <div className="inbox-brand"><span className="inbox-mark" aria-hidden="true">M</span><strong>Gmail</strong><span className="inbox-demo-label">Demo mailbox</span></div>
+      <label className="inbox-search"><span aria-hidden="true">⌕</span><span className="sr-only">Search mail</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search mail" aria-label="Search mail" /></label>
+      <span className="inbox-avatar" aria-label="Demo account">D</span>
+    </div>
     <div className="inbox-layout">
-      <aside className="inbox-sidebar" aria-label="Mail folders"><button type="button" className={folder === 'inbox' ? 'is-current' : ''} onClick={() => { setFolder('inbox'); setSelectedId(null); }}><span aria-hidden="true">✉</span> Inbox <span>{mail.length}</span></button><button type="button" className={folder === 'starred' ? 'is-current' : ''} onClick={() => { setFolder('starred'); setSelectedId(null); }}><span aria-hidden="true">☆</span> Starred <span>{stars.size}</span></button><div className="inbox-sidebar-note">Fictional messages for the Deeproot demo. No Gmail account is connected.</div></aside>
+      <aside className="inbox-sidebar" aria-label="Mail folders">
+        <button type="button" className={folder === 'inbox' ? 'is-current' : ''} aria-current={folder === 'inbox' ? 'page' : undefined} onClick={() => { setFolder('inbox'); setSelectedId(null); }}><span aria-hidden="true">✉</span> Inbox <span>{mail.length}</span></button>
+        <button type="button" className={folder === 'starred' ? 'is-current' : ''} aria-current={folder === 'starred' ? 'page' : undefined} onClick={() => { setFolder('starred'); setSelectedId(null); }}><span aria-hidden="true">☆</span> Starred <span>{stars.size}</span></button>
+        <div className="inbox-sidebar-note">Fictional messages. No Gmail account is connected.</div>
+      </aside>
       <section className="inbox-main" aria-label="Mailbox">
         {selected ? <>
-          <div className="inbox-toolbar"><button type="button" onClick={() => setSelectedId(null)} aria-label="Back to inbox">←</button><span>{selected.sourceId ? 'Account correspondence' : 'Inbox message'}</span></div>
-          <article className="inbox-message"><div className="inbox-message-top"><h1>{selected.subject}</h1>{selected.sourceId && <span className="inbox-context-tag">Available context</span>}</div><div className="inbox-message-meta"><span className="mail-avatar" aria-hidden="true">{selected.sender[0]}</span><div><strong>{selected.sender}</strong><small>{sources.find((source) => source.id === selected.sourceId)?.author || 'demo@example.com'}</small></div><time dateTime={selected.date}>{shortDate(selected.date)}</time></div><div className="inbox-message-body">{selected.body}</div>{selected.sourceId && <button type="button" className="inbox-message-action" onClick={onMeeting}>Continue to meeting <span aria-hidden="true">→</span></button>}</article>
+          <div className="inbox-toolbar"><button type="button" onClick={() => setSelectedId(null)} aria-label="Back to inbox">←</button><span>{selected.sourceId ? 'Account email' : 'Inbox message'}</span></div>
+          <article className="inbox-message"><div className="inbox-message-top"><h1>{selected.subject}</h1>{selected.sourceId && <span className="inbox-context-tag">Report source</span>}</div><div className="inbox-message-meta"><span className="mail-avatar" aria-hidden="true">{selected.sender[0]}</span><div><strong>{selected.sender}</strong><small>{sources.find((source) => source.id === selected.sourceId)?.author || 'demo@example.com'}</small></div><time dateTime={selected.date}>{shortDate(selected.date)}</time></div><div className="inbox-message-body">{selected.body}</div>{selected.sourceId && <button type="button" className="inbox-message-action" onClick={onMeeting}>Open meeting <span aria-hidden="true">→</span></button>}</article>
         </> : <>
           <div className="inbox-toolbar"><strong>{folder === 'inbox' ? 'Inbox' : 'Starred'}</strong><span>{visible.length} messages</span></div>
-          <div className="inbox-message-list">{visible.length ? visible.map((message) => <div className={message.sourceId ? 'inbox-row is-context' : 'inbox-row'} key={message.id}><button className={stars.has(message.id) ? 'inbox-star is-starred' : 'inbox-star'} type="button" onClick={() => toggleStar(message.id)} aria-label={`${stars.has(message.id) ? 'Unstar' : 'Star'} ${message.subject}`}>{stars.has(message.id) ? '★' : '☆'}</button><button className="inbox-row-open" type="button" onClick={() => setSelectedId(message.id)}><span className="inbox-row-sender">{message.sender}</span><span className="inbox-row-subject">{message.subject} <span>— {message.body.replace(/\s+/g, ' ').slice(0, 95)}</span></span>{message.sourceId && <span className="inbox-context-dot" aria-label="Available context" title="Available context" />}<time dateTime={message.date}>{shortDate(message.date)}</time></button></div>) : <div className="inbox-no-results">No messages match your search.</div>}</div>
+          <div className="inbox-message-list">{visible.length ? visible.map((message) => <div className={message.sourceId ? 'inbox-row is-context' : 'inbox-row'} key={message.id}>
+            <button className={stars.has(message.id) ? 'inbox-star is-starred' : 'inbox-star'} type="button" onClick={() => toggleStar(message.id)} aria-pressed={stars.has(message.id)} aria-label={`${stars.has(message.id) ? 'Unstar' : 'Star'} ${message.subject}`}>{stars.has(message.id) ? '★' : '☆'}</button>
+            <button className="inbox-row-open" type="button" onClick={() => setSelectedId(message.id)}><span className="inbox-row-sender">{message.sender}</span><span className="inbox-row-subject">{message.subject}<span className="inbox-snippet">{message.body.replace(/\s+/g, ' ').slice(0, 95)}</span></span>{message.sourceId && <span className="inbox-context-dot" aria-label="Report source" title="Report source" />}<time dateTime={message.date}>{shortDate(message.date)}</time></button>
+          </div>) : <div className="inbox-no-results">No messages match your search.</div>}</div>
         </>}
       </section>
-      <aside className="inbox-context" aria-label="Analysis context"><span className="fox-perch fox-perch--context" data-fox-perch aria-hidden="true" /><span className="inbox-context-eyebrow">Deeproot · source trail</span><h2>Context for analysis</h2><p className="inbox-context-intro">{live ? 'Azure Speech provides the reviewed transcript. Gemini analyzes it with permitted Acme correspondence.' : 'Demo preview of the emails and reviewed meeting text used to tell the Acme story.'}</p><div className="inbox-context-list">{sources.filter((source) => source.kind === 'email').map((source, index) => <button type="button" key={source.id} onClick={() => setSelectedId(source.id)}><span className="context-node">0{index + 1}</span><span><strong>{source.title}</strong><small>{cited.has(source.id) ? 'Cited in report' : 'Available email context'}</small></span><span aria-hidden="true">↗</span></button>)}<button type="button" onClick={onMeeting}><span className="context-node">{String(sources.filter((source) => source.kind === 'email').length + 1).padStart(2, '0')}</span><span><strong>Account meeting</strong><small>{transcript.trim() ? cited.has('acme-meeting') ? 'Reviewed transcript · cited in report' : 'Reviewed transcript ready' : 'Awaiting transcript'}</small></span><span aria-hidden="true">↗</span></button></div>{transcript.trim() && <blockquote className="inbox-transcript-peek">{transcript.trim().slice(0, 180)}{transcript.trim().length > 180 ? '…' : ''}</blockquote>}<button type="button" className="inbox-context-cta" onClick={report ? onReport : onMeeting}>{report ? 'Review cited report' : 'Continue to meeting'} <span aria-hidden="true">→</span></button><p className="inbox-context-footnote">Only authorized account sources can reach the live analysis. Inbox-only messages shown here are excluded.</p></aside>
+      <aside className="inbox-context" aria-label="Analysis context">
+        <span className="fox-perch fox-perch--context" data-fox-perch aria-hidden="true" />
+        <div className="inbox-context-heading"><span className="inbox-context-eyebrow">Deeproot sources</span><h2>{accountName} sources</h2><p>{emailSources.length} emails and meeting transcript</p></div>
+        <div className="inbox-context-list">
+          {emailSources.map((source) => <button type="button" key={source.id} onClick={() => setSelectedId(source.id)}><span className="context-icon" aria-hidden="true">✉</span><span><strong>{source.title}</strong><small>{cited.has(source.id) ? 'Cited in report' : 'Available for report'}</small></span><span aria-hidden="true">↗</span></button>)}
+          <button type="button" onClick={onMeeting}><span className="context-icon" aria-hidden="true">▤</span><span><strong>Meeting transcript</strong><small>{transcript.trim() ? cited.has('acme-meeting') ? 'Cited in report' : 'Reviewed transcript ready' : 'Awaiting transcript'}</small></span><span aria-hidden="true">↗</span></button>
+        </div>
+        {transcript.trim() && <div className="inbox-transcript-peek"><strong>Transcript excerpt</strong><p>{transcript.trim().slice(0, 150)}{transcript.trim().length > 150 ? '…' : ''}</p></div>}
+        <button type="button" className="inbox-context-cta" onClick={report ? onReport : onMeeting}>{report ? 'Review cited report' : 'Continue to meeting'} <span aria-hidden="true">→</span></button>
+      </aside>
     </div>
   </div>;
 }

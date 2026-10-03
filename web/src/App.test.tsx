@@ -23,8 +23,13 @@ describe('Deeproot frontend demo flow', () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByRole('heading', { name: 'Acme Corporation' });
+    expect(screen.getByRole('heading', { name: 'Account summary' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Questions to resolve' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Account emails' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Process meeting' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Inbox' }));
     const context = screen.getByRole('complementary', { name: 'Analysis context' });
+    expect(within(context).getByRole('heading', { name: 'Acme Corporation sources' })).toBeTruthy();
     expect(within(context).getByText('Awaiting transcript')).toBeTruthy();
     expect(within(context).getByText('Payroll export requirements')).toBeTruthy();
     expect(within(context).queryByText('Design review notes')).toBeNull();
