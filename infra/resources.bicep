@@ -19,14 +19,19 @@ param geminiApiKey string
 @secure()
 param linearApiKey string
 
+param linearTeamId string
+param linearTeamKey string
+
 var openAiApiVersion = '2024-10-21'
 var searchIndexName = 'sources'
 var cosmosDatabaseName = 'deeproot'
-// Every container is partitioned by account so reads stay inside one account.
+// Partition keys match how the API reads each container: sources and briefs by account,
+// reports and accounts by their own ID (ReportStore.get and AccountDirectory.getAccount take only an ID).
 var cosmosContainers = [
-  'sources'
-  'briefs'
-  'reports'
+  { name: 'sources', partitionKey: '/accountId' }
+  { name: 'briefs', partitionKey: '/accountId' }
+  { name: 'reports', partitionKey: '/id' }
+  { name: 'accounts', partitionKey: '/id' }
 ]
 
 resource openAi 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
@@ -127,15 +132,15 @@ resource cosmosDatabase 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024
 }
 
 resource cosmosContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = [
-  for name in cosmosContainers: {
+  for container in cosmosContainers: {
     parent: cosmosDatabase
-    name: name
+    name: container.name
     properties: {
       resource: {
-        id: name
+        id: container.name
         partitionKey: {
           paths: [
-            '/accountId'
+            container.partitionKey
           ]
           kind: 'Hash'
         }
@@ -156,7 +161,7 @@ resource staticWebApp 'Microsoft.Web/staticSites@2024-04-01' = {
   properties: {}
 }
 
-// This resource replaces all app settings on every deploy; deploy.ps1 carries GEMINI_API_KEY and LINEAR_API_KEY forward.
+// This resource replaces all app settings on every deploy; deploy.ps1 carries the Gemini and Linear values forward.
 resource staticWebAppSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
   parent: staticWebApp
   name: 'appsettings'
@@ -179,9 +184,12 @@ resource staticWebAppSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
       COSMOS_ENDPOINT: cosmos.properties.documentEndpoint
       COSMOS_KEY: cosmos.listKeys().primaryMasterKey
       COSMOS_DATABASE: cosmosDatabaseName
+      APP_BASE_URL: 'https://${staticWebApp.properties.defaultHostname}'
     },
     empty(geminiApiKey) ? {} : { GEMINI_API_KEY: geminiApiKey },
-    empty(linearApiKey) ? {} : { LINEAR_API_KEY: linearApiKey }
+    empty(linearApiKey) ? {} : { LINEAR_API_KEY: linearApiKey },
+    empty(linearTeamId) ? {} : { LINEAR_TEAM_ID: linearTeamId },
+    empty(linearTeamKey) ? {} : { LINEAR_TEAM_KEY: linearTeamKey }
   )
 }
 

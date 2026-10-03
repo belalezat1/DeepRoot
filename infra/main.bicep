@@ -61,6 +61,12 @@ param geminiApiKey string = ''
 @secure()
 param linearApiKey string = ''
 
+@description('Linear team UUID. Find it with: npm run linear:teams -w api')
+param linearTeamId string = ''
+
+@description('Linear team key shown in issue IDs, e.g. DEE.')
+param linearTeamKey string = ''
+
 var tags = {
   project: 'deeproot'
   event: 'girlhacks2026'
@@ -126,6 +132,8 @@ module resources 'resources.bicep' = {
     geminiThinkingLevel: geminiThinkingLevel
     geminiApiKey: geminiApiKey
     linearApiKey: linearApiKey
+    linearTeamId: linearTeamId
+    linearTeamKey: linearTeamKey
   }
 }
 

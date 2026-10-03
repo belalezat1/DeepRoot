@@ -15,9 +15,14 @@ function Invoke-Az {
   $output
 }
 
-# The app-settings resource replaces every setting, so carry existing secrets forward
+# The app-settings resource replaces every setting, so carry forward values that come from outside Azure
 # unless a new value is set in the environment, e.g. $env:GEMINI_API_KEY = '<key>'.
-$secretParams = [ordered]@{ GEMINI_API_KEY = 'geminiApiKey'; LINEAR_API_KEY = 'linearApiKey' }
+$externalSettings = [ordered]@{
+  GEMINI_API_KEY  = 'geminiApiKey'
+  LINEAR_API_KEY  = 'linearApiKey'
+  LINEAR_TEAM_ID  = 'linearTeamId'
+  LINEAR_TEAM_KEY = 'linearTeamKey'
+}
 $existingSettings = $null
 $siteId = Invoke-Az resource list --name deeproot-web-ya332 --resource-type Microsoft.Web/staticSites --query '[0].id' -o tsv
 if ($siteId) {
@@ -29,11 +34,11 @@ $deployArgs = @(
   '--template-file', (Join-Path $infra 'main.bicep'),
   '--parameters', (Join-Path $infra 'main.bicepparam')
 )
-foreach ($name in $secretParams.Keys) {
+foreach ($name in $externalSettings.Keys) {
   $value = [Environment]::GetEnvironmentVariable($name)
   if (-not $value -and $existingSettings) { $value = $existingSettings.$name }
   if (-not $value) { Write-Warning "$name is not set; it will be left out of the app settings." }
-  $deployArgs += '--parameters', "$($secretParams[$name])=$value"
+  $deployArgs += '--parameters', "$($externalSettings[$name])=$value"
 }
 
 if ($WhatIf) {

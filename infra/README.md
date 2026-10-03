@@ -10,7 +10,7 @@ All resources live in `rg-deeproot` on the NJIT Azure for Students subscription.
 | Azure OpenAI | `deeproot-aoai-ya332`, deployment `chat` (gpt-4.1-mini, 50K TPM); answers when Gemini is rate limited or down | S0, pay per token, nothing when unused | East US 2 |
 | Speech | `deeproot-speech-ya332` | F0 (free, 5 audio hours/month) | East US 2 |
 | AI Search | `deeproot-search-ya332`, index `sources` | Free | West US 2 |
-| Cosmos DB | `deeproot-cosmos-ya332`, database `deeproot`, containers `sources`, `briefs`, `reports` (partition key `/accountId`) | Free tier, capped at 1000 RU/s | East US 2 |
+| Cosmos DB | `deeproot-cosmos-ya332`, database `deeproot`: `sources` and `briefs` (partition key `/accountId`), `reports` and `accounts` (partition key `/id`) | Free tier, capped at 1000 RU/s | East US 2 |
 | Static Web Apps | `deeproot-web-ya332` | Free | East US 2 |
 | Budget | `deeproot-budget`, $25/month, emails at 50%, 90% and forecast 100% | — | Subscription |
 
@@ -25,7 +25,7 @@ Search is in West US 2 because East US 2 had no free Search capacity on 2026-10-
 | `main.bicepparam` | Values for this subscription |
 | `search-index.json` | Search index schema, mirroring `SourceRecord` |
 | `deploy.ps1` | Deploys the templates, then creates or updates the Search index |
-| `write-local-settings.ps1` | Copies the deployed app settings into ignored `api/local.settings.json` and `.env` |
+| `write-local-settings.ps1` | Copies the deployed app settings into ignored `api/.env` and `api/local.settings.json`, keeping other lines in `api/.env` |
 
 ## Usage
 
@@ -37,7 +37,7 @@ Requires the Azure CLI signed in with `az login` (NJIT account) on the Azure for
 .\infra\write-local-settings.ps1
 ```
 
-The setting names are listed in `/.env.example`. Teammates without Azure access work against the stub adapters and don't need these values.
+The setting names are listed in `api/.env.example`. Teammates without Azure access work against the stub adapters and don't need these values.
 
 ## Model provider
 

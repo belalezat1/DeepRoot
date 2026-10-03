@@ -1,6 +1,6 @@
 // Sends one plain and one structured request through the configured model.
-// Run from api/: npm run smoke:generate   (reads ../.env; set MODEL_PROVIDER to compare providers)
-import { createTextGenerator } from "../adapters/text/index.js";
+// Run: npm run smoke:generate -w api   (reads api/.env; set MODEL_PROVIDER to compare providers)
+import { createTextGenerator } from "../src/adapters/text/index.js";
 
 const generator = createTextGenerator();
 
