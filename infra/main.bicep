@@ -27,6 +27,36 @@ param chatDeploymentName string = 'chat'
 @description('Thousands of tokens per minute for the chat deployment.')
 param chatCapacity int = 50
 
+@description('Model provider the API uses for generation.')
+@allowed([
+  'gemini'
+  'azure'
+])
+param modelProvider string = 'gemini'
+
+@description('Provider used when the main one is rate limited or unavailable. Empty disables fallback.')
+@allowed([
+  ''
+  'gemini'
+  'azure'
+])
+param modelFallback string = 'azure'
+
+@description('Free-tier limits are per model. On 2026-10-03 gemini-3.5-flash answered in about 2 s; gemini-3.8-flash took 8-25 s and hit 5 requests per minute. gemini-2.5-flash is closed to new keys.')
+param geminiModel string = 'gemini-3.5-flash'
+
+@description('Gemini 3 reasoning depth. Some models reject minimal, so it is not offered.')
+@allowed([
+  'low'
+  'medium'
+  'high'
+])
+param geminiThinkingLevel string = 'low'
+
+@description('Google AI Studio API key. Leave empty to omit it from app settings.')
+@secure()
+param geminiApiKey string = ''
+
 @description('Linear personal API key. Leave empty to omit it from app settings.')
 @secure()
 param linearApiKey string = ''
@@ -90,6 +120,11 @@ module resources 'resources.bicep' = {
     chatModelVersion: chatModelVersion
     chatDeploymentName: chatDeploymentName
     chatCapacity: chatCapacity
+    modelProvider: modelProvider
+    modelFallback: modelFallback
+    geminiModel: geminiModel
+    geminiThinkingLevel: geminiThinkingLevel
+    geminiApiKey: geminiApiKey
     linearApiKey: linearApiKey
   }
 }

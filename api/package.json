@@ -1,0 +1,17 @@
+{
+  "name": "@deeproot/api",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "smoke:generate": "tsc && node --env-file=../.env dist/scripts/smokeGenerate.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^7.0.2"
+  }
+}

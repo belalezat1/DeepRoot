@@ -15,21 +15,26 @@ function Invoke-Az {
   $output
 }
 
-# The app-settings resource replaces every setting, so carry an existing Linear key forward.
-$linearApiKey = $env:LINEAR_API_KEY
-if (-not $linearApiKey) {
-  $siteId = Invoke-Az resource list --name deeproot-web-ya332 --resource-type Microsoft.Web/staticSites --query '[0].id' -o tsv
-  if ($siteId) {
-    $linearApiKey = Invoke-Az staticwebapp appsettings list -n deeproot-web-ya332 -g rg-deeproot --query properties.LINEAR_API_KEY -o tsv
-  }
+# The app-settings resource replaces every setting, so carry existing secrets forward
+# unless a new value is set in the environment, e.g. $env:GEMINI_API_KEY = '<key>'.
+$secretParams = [ordered]@{ GEMINI_API_KEY = 'geminiApiKey'; LINEAR_API_KEY = 'linearApiKey' }
+$existingSettings = $null
+$siteId = Invoke-Az resource list --name deeproot-web-ya332 --resource-type Microsoft.Web/staticSites --query '[0].id' -o tsv
+if ($siteId) {
+  $existingSettings = (Invoke-Az staticwebapp appsettings list -n deeproot-web-ya332 -g rg-deeproot -o json | ConvertFrom-Json).properties
 }
 
 $deployArgs = @(
   '--location', $Location,
   '--template-file', (Join-Path $infra 'main.bicep'),
-  '--parameters', (Join-Path $infra 'main.bicepparam'),
-  '--parameters', "linearApiKey=$linearApiKey"
+  '--parameters', (Join-Path $infra 'main.bicepparam')
 )
+foreach ($name in $secretParams.Keys) {
+  $value = [Environment]::GetEnvironmentVariable($name)
+  if (-not $value -and $existingSettings) { $value = $existingSettings.$name }
+  if (-not $value) { Write-Warning "$name is not set; it will be left out of the app settings." }
+  $deployArgs += '--parameters', "$($secretParams[$name])=$value"
+}
 
 if ($WhatIf) {
   Invoke-Az deployment sub what-if @deployArgs --result-format ResourceIdOnly

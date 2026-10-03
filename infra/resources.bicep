@@ -1,4 +1,5 @@
-// Deeproot services inside rg-deeproot. Every service uses a free tier except Azure OpenAI.
+// Deeproot services inside rg-deeproot. Every service uses a free tier except Azure OpenAI,
+// which bills per token and serves only as the fallback when MODEL_PROVIDER is 'azure'.
 param location string
 param searchLocation string
 param suffix string
@@ -7,6 +8,13 @@ param chatModelName string
 param chatModelVersion string
 param chatDeploymentName string
 param chatCapacity int
+param modelProvider string
+param modelFallback string
+param geminiModel string
+param geminiThinkingLevel string
+
+@secure()
+param geminiApiKey string
 
 @secure()
 param linearApiKey string
@@ -148,12 +156,16 @@ resource staticWebApp 'Microsoft.Web/staticSites@2024-04-01' = {
   properties: {}
 }
 
-// This resource replaces all app settings on every deploy; deploy.ps1 carries LINEAR_API_KEY forward.
+// This resource replaces all app settings on every deploy; deploy.ps1 carries GEMINI_API_KEY and LINEAR_API_KEY forward.
 resource staticWebAppSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
   parent: staticWebApp
   name: 'appsettings'
   properties: union(
     {
+      MODEL_PROVIDER: modelProvider
+      MODEL_FALLBACK: modelFallback
+      GEMINI_MODEL: geminiModel
+      GEMINI_THINKING_LEVEL: geminiThinkingLevel
       AZURE_OPENAI_ENDPOINT: openAi.properties.endpoint
       AZURE_OPENAI_API_KEY: openAi.listKeys().key1
       AZURE_OPENAI_DEPLOYMENT: chatDeployment.name
@@ -168,6 +180,7 @@ resource staticWebAppSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
       COSMOS_KEY: cosmos.listKeys().primaryMasterKey
       COSMOS_DATABASE: cosmosDatabaseName
     },
+    empty(geminiApiKey) ? {} : { GEMINI_API_KEY: geminiApiKey },
     empty(linearApiKey) ? {} : { LINEAR_API_KEY: linearApiKey }
   )
 }

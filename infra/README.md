@@ -6,7 +6,8 @@ All resources live in `rg-deeproot` on the NJIT Azure for Students subscription.
 
 | Resource | Name | Tier | Region |
 | --- | --- | --- | --- |
-| Azure OpenAI | `deeproot-aoai-ya332`, deployment `chat` (gpt-4.1-mini, 50K TPM) | S0, pay per token | East US 2 |
+| Google Gemini (not Azure) | `gemini-3.5-flash` through the Gemini API; the default model | Google AI Studio free tier, rate limited per model | — |
+| Azure OpenAI | `deeproot-aoai-ya332`, deployment `chat` (gpt-4.1-mini, 50K TPM); answers when Gemini is rate limited or down | S0, pay per token, nothing when unused | East US 2 |
 | Speech | `deeproot-speech-ya332` | F0 (free, 5 audio hours/month) | East US 2 |
 | AI Search | `deeproot-search-ya332`, index `sources` | Free | West US 2 |
 | Cosmos DB | `deeproot-cosmos-ya332`, database `deeproot`, containers `sources`, `briefs`, `reports` (partition key `/accountId`) | Free tier, capped at 1000 RU/s | East US 2 |
@@ -38,9 +39,19 @@ Requires the Azure CLI signed in with `az login` (NJIT account) on the Azure for
 
 The setting names are listed in `/.env.example`. Teammates without Azure access work against the stub adapters and don't need these values.
 
-## Linear key
+## Model provider
 
-The app-settings resource replaces every setting on each deploy. `deploy.ps1` carries an existing `LINEAR_API_KEY` forward. To set or change it, run `$env:LINEAR_API_KEY = '<key>'` before `.\infra\deploy.ps1`.
+`MODEL_PROVIDER` chooses the model: `gemini` (deployed default), `azure` (fallback) or `stub` (offline; used when the setting is missing). `MODEL_FALLBACK=azure` sends a request to Azure OpenAI when Gemini is rate limited, overloaded or unreachable; the result's `provider` field shows which one answered. Change the deployed default with `modelProvider` in `main.bicepparam`. Test the configured model from `api/` with `npm run smoke:generate`.
+
+## Gemini and Linear keys
+
+These keys come from outside Azure, so the templates can't read them. The app-settings resource replaces every setting on each deploy; `deploy.ps1` carries existing `GEMINI_API_KEY` and `LINEAR_API_KEY` values forward. To set or change one:
+
+```powershell
+$env:GEMINI_API_KEY = '<key>'
+.\infra\deploy.ps1
+.\infra\write-local-settings.ps1
+```
 
 ## Search access rules
 
