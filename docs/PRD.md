@@ -18,13 +18,16 @@ Client requirements live in emails, while commitments happen in conversation. A 
 
 ## Demo scenario
 
-Use fictional Acme and BetaCo records; no real payroll or client data.
+Use fictional Northstar Logistics and BetaCo records; no real payroll or client data. Northstar is moving its payroll onto Meridian Payroll, whose account team uses Deeproot. The first payroll on the new platform runs October 15.
 
-- **Acme customer email:** Requests payroll exports for both US and Canada subsidiaries.
-- **Acme internal email:** Notes that the current export supports only the US subsidiary.
-- **Recorded meeting:** An account representative promises an export by Friday without repeating the two-subsidiary detail.
-- **Deeproot output:** Connects the meeting promise to both emails, flags the Canada gap, and drafts a Linear issue with "US and Canada subsidiaries" in its acceptance criteria.
-- **Security check:** The presenter asks about BetaCo payroll information and receives no restricted content.
+- **Customer email (Maya Chen, Northstar):** 38 employees in Ohio and Pennsylvania still lack state tax setup; asks who is handling it.
+- **Internal email (Jordan Ellis, Meridian):** Waiting on Northstar's Ohio withholding account number; if it isn't in by October 8, the October 15 launch is at risk.
+- **Implementation Tracker:** Ticket IT-5120 is Blocked and Unassigned, due October 8, with a stale go-live date of October 22.
+- **Payroll Configuration Dashboard:** Ohio withholding (24 employees) and Pennsylvania local tax (14 employees) are INCOMPLETE.
+- **Kickoff meeting:** Maya flagged Ohio and Pennsylvania local taxes weeks earlier.
+- **Recorded meeting:** Sam (account rep) says the October 15 payroll "may slip" and, asked who owns it, says "let me confirm with the team." No owner is named.
+- **Deeproot output:** Connects the meeting to every other source, flags the October 8 dependency, the missing owner, and the conflicting go-live date, and drafts a Linear issue whose acceptance criteria cover both Ohio and Pennsylvania.
+- **Security check:** The presenter asks about BetaCo payroll information and receives no restricted content. BetaCo records carry the marker `BLUEHERON-7731`, which must never appear for a Northstar user.
 
 ## Required features
 
@@ -35,15 +38,15 @@ Use fictional Acme and BetaCo records; no real payroll or client data.
 | P3 | Cited report | Shows summary, decisions, commitments, proposed owner, due date, open questions, risks, and suggested follow-up. Material claims link to email or transcript excerpts. |
 | P4 | Honest uncertainty | Missing owners or dates appear as Unknown; the app does not invent them. |
 | P5 | Linear action | Presents an editable issue draft. Create in Linear makes one real issue after review and returns its working link. |
-| P6 | Follow-up chat | Answers questions about Acme using permitted account sources and visible citations. |
+| P6 | Follow-up chat | Answers questions about Northstar using permitted account sources and visible citations. |
 | P7 | Check claim | Rates a draft client statement as Supported, Uncertain, or Contradicted, explains why, and suggests accurate wording. |
-| P8 | Access control | Account permissions are checked on the server before retrieval or model calls. BetaCo content is absent from Acme answers. |
+| P8 | Access control | Account permissions are checked on the server before retrieval or model calls. BetaCo content is absent from Northstar answers. |
 
 ## Experience and visual direction
 
 The demo has three principal views:
 
-1. **Before the meeting:** Acme overview, dated email cards, brief, and a clear Process meeting action.
+1. **Before the meeting:** Northstar overview, dated email cards, brief, and a clear Process meeting action.
 2. **Meeting and report:** Audio/transcription progress followed by a report. Selecting a citation opens the exact source excerpt alongside the claim.
 3. **Act and explore:** Editable Linear issue draft, issue link after creation, chat, and Check claim.
 
@@ -51,7 +54,7 @@ Use the GirlHacks dark forest palette with teal, lime, gold, and restrained purp
 
 ## Success measures
 
-- The report carries both subsidiaries from the email into the ticket's acceptance criteria.
+- The report connects the meeting to the emails and internal tools, and the ticket's acceptance criteria cover both Ohio and Pennsylvania.
 - Each commitment and identified risk has inspectable supporting evidence.
 - A user-reviewed action creates one real Linear issue and displays its link.
 - A contradictory proposed client reply is flagged.

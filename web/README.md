@@ -1,6 +1,6 @@
 # Deeproot web
 
-React/Vite frontend for the Acme meeting-to-action demo. It uses `@deeproot/shared` for API contracts and the Acme records in `@deeproot/demo` for mock mode.
+React/Vite frontend for the Northstar Logistics meeting-to-action demo. It uses `@deeproot/shared` for API contracts and the Northstar records in `@deeproot/demo` for mock mode.
 
 ## Run
 

@@ -7,7 +7,8 @@ import type {
   TicketDraft,
   TranscribeResponse,
 } from '@deeproot/shared';
-import { ACCOUNT_ID, answerDemoQuestion, checkDemoClaim, demoBriefResponse, DEMO_TRANSCRIPT, emailSources, makeDemoReport, meetingSource } from './demo';
+import { SAMPLE_REPORT_ID } from '@deeproot/demo';
+import { ACCOUNT_ID, answerDemoQuestion, checkDemoClaim, demoBriefResponse, DEMO_TRANSCRIPT, makeDemoReport, reportSources } from './demo';
 import { ApiError, toBrief } from './model';
 import type { Brief } from './model';
 
@@ -24,9 +25,8 @@ async function jsonRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = payload?.error;
-    const message = typeof detail?.message === 'string' ? detail.message :
+    const message = response.status === 404 ? 'Not found' : typeof detail?.message === 'string' ? detail.message :
       response.status === 401 ? 'Sign in to continue.' :
-      response.status === 404 ? 'This account or report is not available to you.' :
       'This request could not be completed.';
     throw new ApiError(message, response.status, typeof detail?.fallbackUrl === 'string' ? detail.fallbackUrl : undefined);
   }
@@ -46,7 +46,7 @@ export const api = {
       return toBrief(response);
     }
     await pause();
-    if (accountId !== ACCOUNT_ID) throw new ApiError('This account is not available to you.', 404);
+    if (accountId !== ACCOUNT_ID) throw new ApiError('Not found', 404);
     return toBrief(demoBriefResponse);
   },
 
@@ -64,14 +64,14 @@ export const api = {
   async createReport(accountId: string, transcript: string): Promise<ReportResponse> {
     if (isLive) return jsonRequest<ReportResponse>('/api/reports', jsonBody({ accountId, transcript }));
     await pause();
-    return { report: makeDemoReport(transcript), sources: [...emailSources, meetingSource(transcript)] };
+    return { report: makeDemoReport(transcript), sources: reportSources(transcript) };
   },
 
   async getReport(reportId: string): Promise<ReportResponse> {
     if (isLive) return jsonRequest<ReportResponse>(`/api/reports/${encodeURIComponent(reportId)}`);
     await pause();
-    if (reportId !== 'demo-acme-report') throw new ApiError('Report not found.', 404);
-    return { report: makeDemoReport(DEMO_TRANSCRIPT), sources: [...emailSources, meetingSource(DEMO_TRANSCRIPT)] };
+    if (reportId !== SAMPLE_REPORT_ID) throw new ApiError('Not found', 404);
+    return { report: makeDemoReport(DEMO_TRANSCRIPT), sources: reportSources(DEMO_TRANSCRIPT) };
   },
 
   async createIssue(reportId: string, ticket: TicketDraft): Promise<CreateLinearIssueResponse> {
@@ -88,14 +88,14 @@ export const api = {
   async chat(accountId: string, question: string, reportId?: string): Promise<ChatResponse> {
     if (isLive) return jsonRequest<ChatResponse>('/api/chat', jsonBody({ accountId, question, reportId }));
     await pause();
-    if (accountId !== ACCOUNT_ID) throw new ApiError('This account is not available to you.', 404);
+    if (accountId !== ACCOUNT_ID) throw new ApiError('Not found', 404);
     return answerDemoQuestion(question);
   },
 
   async checkClaim(accountId: string, statement: string): Promise<ClaimCheckResponse> {
     if (isLive) return jsonRequest<ClaimCheckResponse>('/api/claims/check', jsonBody({ accountId, statement }));
     await pause();
-    if (accountId !== ACCOUNT_ID) throw new ApiError('This account is not available to you.', 404);
+    if (accountId !== ACCOUNT_ID) throw new ApiError('Not found', 404);
     return checkDemoClaim(statement);
   },
 };

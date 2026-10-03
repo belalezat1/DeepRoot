@@ -5,10 +5,11 @@
   "workspaces": [
     "shared",
     "demo",
+    "api",
     "web"
   ],
   "scripts": {
-    "typecheck": "tsc -b shared demo && npm run build --workspace web",
+    "typecheck": "tsc -b shared demo api && npm run build --workspace web",
     "test": "vitest run"
   },
   "devDependencies": {

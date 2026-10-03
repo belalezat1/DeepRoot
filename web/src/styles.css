@@ -41,6 +41,12 @@ a{color:inherit}
 .card-heading h2,.section-top h2{margin:7px 0 0;color:#f1f4ec;font-size:21px;font-weight:600;letter-spacing:-.025em;line-height:1.3}
 .overview-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(285px,.85fr);gap:18px;align-items:stretch}
 .brief-summary{font-size:17px;line-height:1.65;color:#e4ebe2;margin:0}
+.brief-findings{display:grid;gap:15px;margin-top:22px}
+.brief-finding{padding-top:14px;border-top:1px solid rgba(180,225,133,.25)}
+.brief-finding p{margin:7px 0;color:#e4ebe2;line-height:1.5}
+.finding-badge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.finding-badge--risk{background:#60462b;color:#ffe2a2}
+.finding-badge--blocker{background:#5b3038;color:#ffd0d7}
 .brief-card,.questions-card{min-height:230px}
 .questions-card{border-top:2px solid #d8bc79;background:linear-gradient(145deg,#21382b,#182f2b 75%,#302b38)}
 .questions-card .question-list{font-size:14px;line-height:1.65}

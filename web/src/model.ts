@@ -1,4 +1,4 @@
-import type { AccountBriefResponse, ChatResponse, ClaimCheckResponse, PublicSource } from '@deeproot/shared';
+import type { AccountBriefResponse, BriefItem, ChatResponse, ClaimCheckResponse, PublicSource } from '@deeproot/shared';
 
 export type {
   Citation,
@@ -16,6 +16,7 @@ export type Brief = {
   accountId: string;
   accountName: string;
   brief: string;
+  items: BriefItem[];
   openQuestions: string[];
   sources: PublicSource[];
 };
@@ -28,6 +29,7 @@ export function toBrief(response: AccountBriefResponse): Brief {
     accountId: response.account.id,
     accountName: response.account.name,
     brief: response.brief.summary,
+    items: response.brief.items,
     openQuestions: response.brief.openQuestions,
     sources: response.emails,
   };

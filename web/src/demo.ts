@@ -1,83 +1,54 @@
-import { ACME_CUSTOMER_EMAIL, ACME_INTERNAL_EMAIL, ACME_MEETING_DATE, ACME_MEETING_TRANSCRIPT } from '@deeproot/demo';
+import { ACCOUNTS, NORTHSTAR_CUSTOMER_EMAIL, NORTHSTAR_INTERNAL_EMAIL, NORTHSTAR_KICKOFF, NORTHSTAR_MEETING_DATE, NORTHSTAR_MEETING_TRANSCRIPT, SAMPLE_NORTHSTAR_REPORT, SAMPLE_SOURCE_IDS } from '@deeproot/demo';
 import type { AccountBriefResponse, ChatResponse, ClaimCheckResponse, MeetingReport, PublicSource } from '@deeproot/shared';
 
-export const ACCOUNT_ID = 'acme';
-export const DEMO_TRANSCRIPT = ACME_MEETING_TRANSCRIPT;
+export const ACCOUNT_ID = 'northstar';
+export const DEMO_TRANSCRIPT = NORTHSTAR_MEETING_TRANSCRIPT;
+const S = SAMPLE_SOURCE_IDS;
 
-function publicSource(record: typeof ACME_CUSTOMER_EMAIL): PublicSource {
-  return {
-    id: record.id,
-    accountId: record.accountId,
-    kind: record.kind,
-    title: record.title,
-    author: record.author,
-    occurredAt: record.occurredAt,
-    body: record.body,
-  };
+// Raw mail fixtures are adapted for mock display. Live sources always come from the API.
+function mailSource(mail: typeof NORTHSTAR_CUSTOMER_EMAIL | typeof NORTHSTAR_INTERNAL_EMAIL, id: string): PublicSource {
+  const body = 'text' in mail ? mail.text.replace(/\r\n/g, '\n').split('\n-- ')[0].trim() :
+    mail.html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<\/p>/gi, '\n').replace(/<[^>]+>/g, '')
+      .replace(/&#8217;/g, '’').replace(/&#39;/g, "'").trim();
+  return { id, accountId: ACCOUNT_ID, kind: 'email', title: mail.subject, author: mail.from, occurredAt: new Date(mail.sentAt).toISOString(), body };
 }
 
-export const emailSources: PublicSource[] = [publicSource(ACME_INTERNAL_EMAIL), publicSource(ACME_CUSTOMER_EMAIL)];
+export const emailSources: PublicSource[] = [
+  mailSource(NORTHSTAR_INTERNAL_EMAIL, S.internalEmail),
+  mailSource(NORTHSTAR_CUSTOMER_EMAIL, S.customerEmail),
+];
 
 export const meetingSource = (transcript: string): PublicSource => ({
-  id: 'acme-meeting',
-  accountId: ACCOUNT_ID,
-  kind: 'meeting',
-  title: 'Acme account meeting',
-  author: 'Meeting transcript',
-  occurredAt: ACME_MEETING_DATE,
-  body: transcript,
+  id: S.meeting, accountId: ACCOUNT_ID, kind: 'meeting', title: 'Northstar Logistics meeting',
+  author: 'Meeting transcript', occurredAt: NORTHSTAR_MEETING_DATE, body: transcript,
 });
 
+const otherSources: PublicSource[] = [
+  { id: S.kickoff, accountId: ACCOUNT_ID, kind: 'meeting', title: NORTHSTAR_KICKOFF.title, author: 'Meeting transcript', occurredAt: NORTHSTAR_KICKOFF.occurredAt, body: NORTHSTAR_KICKOFF.transcript },
+  { id: S.tracker, accountId: ACCOUNT_ID, kind: 'internal_app', app: { id: 'impl-tracker', name: 'Implementation Tracker' }, title: 'State tax setup: Ohio and Pennsylvania', author: 'Jordan Ellis', occurredAt: '2026-10-01T13:00:00Z', body: "Ticket: IT-5120\nStatus: Blocked\nAssignee: Unassigned\nDue: 2026-10-08\nGo-live: 2026-10-22\nNotes: State tax mapping incomplete. Waiting on client's Ohio withholding account number. PA local tax codes missing for 14 employees." },
+  { id: S.ohioConfig, accountId: ACCOUNT_ID, kind: 'internal_app', app: { id: 'payroll-config', name: 'Payroll Configuration Dashboard' }, title: 'Ohio withholding (SIT)', author: 'Jordan Ellis', occurredAt: '2026-10-01T21:30:00Z', body: 'Area: State income tax\nSetting: Ohio withholding (SIT)\nStatus: INCOMPLETE\nMissing: Ohio withholding account number\nEmployees affected: 24' },
+  { id: S.paConfig, accountId: ACCOUNT_ID, kind: 'internal_app', app: { id: 'payroll-config', name: 'Payroll Configuration Dashboard' }, title: 'Pennsylvania local earned income tax', author: 'Jordan Ellis', occurredAt: '2026-10-01T21:35:00Z', body: 'Area: Local tax\nSetting: Pennsylvania local earned income tax\nStatus: INCOMPLETE\nMissing: PSD codes, work location municipality\nEmployees affected: 14' },
+];
+
 export const demoBriefResponse: AccountBriefResponse = {
-  account: { id: ACCOUNT_ID, name: 'Acme Corporation' },
+  account: { id: ACCOUNT_ID, name: ACCOUNTS.find((account) => account.id === ACCOUNT_ID)!.name },
   emails: emailSources,
   brief: {
-    summary: 'Acme needs a payroll export for both its US and Canada subsidiaries. The current export supports US only. Confirm the Canada scope and CAD currency before committing to delivery.',
+    summary: 'Northstar’s October 15 first payroll is at risk: state tax setup is incomplete for 38 employees in Ohio and Pennsylvania. The Ohio withholding account number is needed by October 8, and no delivery owner has been named.',
     items: [
-      { text: 'Acme requested both US and Canada subsidiaries.', citations: [{ sourceId: ACME_CUSTOMER_EMAIL.id, quote: 'both our US and Canada subsidiaries' }] },
-      { text: 'The existing export covers only US.', citations: [{ sourceId: ACME_INTERNAL_EMAIL.id, quote: 'the current payroll export only supports the US subsidiary' }] },
+      { text: '38 employees still need state tax setup.', type: 'blocker', severity: 'high', citations: [{ sourceId: S.customerEmail, quote: "38 employees in Ohio and Pennsylvania still don't have state tax setup in the new system." }] },
+      { text: 'The October 15 payroll launch is at risk if the Ohio account number does not arrive by October 8.', type: 'risk', severity: 'high', citations: [{ sourceId: S.internalEmail, quote: "If the Ohio account number doesn't arrive by October 8, the October 15 payroll launch is at risk." }] },
     ],
-    openQuestions: ['What work is required for Canada provincial tax fields and CAD?', 'Who will own the export and client update?'],
+    openQuestions: ['Who owns the Ohio and Pennsylvania state tax setup?', 'When will Northstar send the Ohio withholding account number?', 'Where do the 14 Pennsylvania employees work?'],
   },
 };
 
 export function makeDemoReport(transcript: string): MeetingReport {
-  const statedPromise = 'We can have the payroll export ready for you by Friday.';
-  const meetingQuote = transcript.includes(statedPromise)
-    ? statedPromise
-    : transcript.split('\n').find((line) => line.toLowerCase().includes('payroll export'))?.trim() || transcript.trim().split('\n')[0] || '';
-  const meetingCitation = { sourceId: 'acme-meeting', quote: meetingQuote };
-  const customerCitation = { sourceId: ACME_CUSTOMER_EMAIL.id, quote: 'both our US and Canada subsidiaries' };
-  const gapCitation = { sourceId: ACME_INTERNAL_EMAIL.id, quote: 'the current payroll export only supports the US subsidiary' };
+  return { ...structuredClone(SAMPLE_NORTHSTAR_REPORT), transcript };
+}
 
-  return {
-    id: 'demo-acme-report',
-    accountId: ACCOUNT_ID,
-    transcript,
-    summary: 'The team promised an Acme payroll export by Friday. Earlier email requires both US and Canada subsidiaries, while the current export supports US only. Canada scope and currency need confirmation before delivery.',
-    decisions: [{ text: 'Target delivery of the payroll export for Friday.', citations: [meetingCitation] }],
-    commitments: [{
-      text: 'Deliver an Acme payroll export covering both US and Canada subsidiaries.',
-      owner: null,
-      dueDate: '2026-10-02',
-      citations: [meetingCitation, customerCitation],
-    }],
-    risks: [{ text: 'The current export covers only US; Canada needs provincial tax fields and CAD currency mapping.', citations: [gapCitation] }],
-    openQuestions: ['Who owns the export and client update?', 'How will Canada provincial tax fields and CAD be validated?'],
-    suggestedFollowUp: 'Confirm Canada scope and currency with delivery, assign an owner, and update Acme on the Friday commitment.',
-    ticketDraft: {
-      title: 'Deliver Acme payroll export for US and Canada',
-      description: 'Acme requested one payroll export covering both subsidiaries. The meeting set a Friday delivery target, but the current export supports US only. Canada mapping and validation are required.',
-      acceptanceCriteria: [
-        'Export includes payroll data for both US and Canada subsidiaries.',
-        'Canada provincial tax fields and CAD currency handling are confirmed and validated.',
-        'An owner and delivery status are communicated to Acme.',
-      ],
-      priority: 'high',
-    },
-    createdAt: ACME_MEETING_DATE,
-    createdBy: 'presenter',
-  };
+export function reportSources(transcript: string): PublicSource[] {
+  return [...emailSources, ...otherSources, meetingSource(transcript)];
 }
 
 export function answerDemoQuestion(question: string): ChatResponse {
@@ -85,41 +56,17 @@ export function answerDemoQuestion(question: string): ChatResponse {
     return { answer: 'I cannot answer that from this account workspace.', citations: [], sources: [], grounded: false };
   }
   if (/who|owner/i.test(question)) {
-    return {
-      answer: 'No delivery owner was named in the meeting. The representative said they would check with the team and get back to Acme.',
-      citations: [{ sourceId: 'acme-meeting', quote: 'Let me check with the team and get back to you on that.' }],
-      sources: [meetingSource(DEMO_TRANSCRIPT)], grounded: true,
-    };
+    return { answer: 'No owner was named in the meeting. The tracker ticket is unassigned.', citations: [{ sourceId: S.meeting, quote: 'Let me confirm with the team and get back to you.' }, { sourceId: S.tracker, quote: 'Assignee: Unassigned' }], sources: [meetingSource(DEMO_TRANSCRIPT), otherSources[1]], grounded: true };
   }
-  return {
-    answer: 'Acme asked for both US and Canada subsidiaries. The internal note says the current export supports only US, so Canada remains a delivery gap.',
-    citations: [
-      { sourceId: ACME_CUSTOMER_EMAIL.id, quote: 'both our US and Canada subsidiaries' },
-      { sourceId: ACME_INTERNAL_EMAIL.id, quote: 'the current payroll export only supports the US subsidiary' },
-    ],
-    sources: emailSources, grounded: true,
-  };
+  return { answer: 'State tax setup remains incomplete for 38 employees in Ohio and Pennsylvania. The Ohio withholding account number is needed by October 8 to protect the October 15 payroll launch.', citations: [{ sourceId: S.customerEmail, quote: "38 employees in Ohio and Pennsylvania still don't have state tax setup in the new system." }, { sourceId: S.internalEmail, quote: "If the Ohio account number doesn't arrive by October 8, the October 15 payroll launch is at risk." }], sources: emailSources, grounded: true };
 }
 
 export function checkDemoClaim(statement: string): ClaimCheckResponse {
-  if (/canada|both/i.test(statement) && /already|currently|supports|ready|complete|done/i.test(statement)) {
-    return {
-      verdict: 'contradicted',
-      explanation: 'The internal delivery email says the current export supports only the US subsidiary.',
-      citations: [{ sourceId: ACME_INTERNAL_EMAIL.id, quote: 'the current payroll export only supports the US subsidiary' }],
-      sources: [publicSource(ACME_INTERNAL_EMAIL)],
-      suggestedRewrite: 'The current export supports US payroll. We are confirming the work needed to include Canada before delivery.',
-    };
+  if (/complete|ready|on track|no risk|will launch/i.test(statement)) {
+    return { verdict: 'contradicted', explanation: 'State tax setup remains incomplete, and the internal email says the October 15 launch is at risk.', citations: [{ sourceId: S.internalEmail, quote: "If the Ohio account number doesn't arrive by October 8, the October 15 payroll launch is at risk." }], sources: [emailSources[0]], suggestedRewrite: 'State tax setup remains incomplete. We are waiting on the Ohio withholding account number and will confirm the October 15 payroll timing.' };
   }
-  if (/us and canada|both.*subsidiar/i.test(statement) && /requested|asked|need/i.test(statement)) {
-    return {
-      verdict: 'supported', explanation: 'Acme explicitly requested both subsidiaries in its email.',
-      citations: [{ sourceId: ACME_CUSTOMER_EMAIL.id, quote: 'both our US and Canada subsidiaries' }],
-      sources: [publicSource(ACME_CUSTOMER_EMAIL)], suggestedRewrite: statement.trim(),
-    };
+  if (/38 employees|ohio and pennsylvania/i.test(statement)) {
+    return { verdict: 'supported', explanation: 'Maya’s email confirms the affected employees and states.', citations: [{ sourceId: S.customerEmail, quote: "38 employees in Ohio and Pennsylvania still don't have state tax setup in the new system." }], sources: [emailSources[1]], suggestedRewrite: statement.trim() };
   }
-  return {
-    verdict: 'uncertain', explanation: 'The available Acme sources do not establish this statement clearly.',
-    citations: [], sources: [], suggestedRewrite: 'We will confirm this detail with the delivery team and follow up with Acme.',
-  };
+  return { verdict: 'uncertain', explanation: 'The available Northstar sources do not establish this statement clearly.', citations: [], sources: [], suggestedRewrite: 'We will confirm this detail and follow up with Northstar.' };
 }

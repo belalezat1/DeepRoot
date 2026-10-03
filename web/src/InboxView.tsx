@@ -18,7 +18,7 @@ const EVERYDAY_MAIL: Mail[] = [
   { id: 'demo-product', sender: 'Eli Brooks', subject: 'Product notes for October', date: '2026-09-29T12:10:00Z', body: 'Sharing the October product notes ahead of our Monday planning session.\n\nBest,\nEli' },
   { id: 'demo-lunch', sender: 'Sam Rivera', subject: 'Lunch on Thursday?', date: '2026-09-27T17:25:00Z', body: 'A few of us are grabbing lunch after the morning workshop on Thursday. Let me know if you can make it.\n\nSam' },
   { id: 'demo-workshop', sender: 'Learning Team', subject: 'Workshop materials are ready', date: '2026-09-26T11:40:00Z', body: 'The workshop agenda and reading materials are available in the demo workspace. This is a fictional inbox message.' },
-  { id: 'demo-welcome', sender: 'Workspace Team', subject: 'Welcome to your workspace', date: '2026-09-25T10:30:00Z', body: 'Your demo workspace is ready. Open the Acme threads to inspect the account context.\n\nThis is a fictional message for the hackathon demo.' },
+  { id: 'demo-welcome', sender: 'Workspace Team', subject: 'Welcome to your workspace', date: '2026-09-25T10:30:00Z', body: 'Your demo workspace is ready. Open the Northstar threads to inspect the account context.\n\nThis is a fictional message for the hackathon demo.' },
 ];
 
 function nameFromAuthor(author: string) {
@@ -93,7 +93,7 @@ export function InboxView({ accountName, sources, transcript, report, onMeeting,
         <div className="inbox-context-heading"><span className="inbox-context-eyebrow">Deeproot sources</span><h2>{accountName} sources</h2><p>{emailSources.length} emails and meeting transcript</p></div>
         <div className="inbox-context-list">
           {emailSources.map((source) => <button type="button" key={source.id} onClick={() => setSelectedId(source.id)}><span className="context-icon" aria-hidden="true">✉</span><span><strong>{source.title}</strong><small>{cited.has(source.id) ? 'Cited in report' : 'Available for report'}</small></span><span aria-hidden="true">↗</span></button>)}
-          <button type="button" onClick={onMeeting}><span className="context-icon" aria-hidden="true">▤</span><span><strong>Meeting transcript</strong><small>{transcript.trim() ? cited.has('acme-meeting') ? 'Cited in report' : 'Reviewed transcript ready' : 'Awaiting transcript'}</small></span><span aria-hidden="true">↗</span></button>
+          <button type="button" onClick={onMeeting}><span className="context-icon" aria-hidden="true">▤</span><span><strong>Meeting transcript</strong><small>{transcript.trim() ? report?.risks.some((risk) => risk.citations.some((citation) => citation.sourceId.startsWith('northstar-meeting-'))) ? 'Cited in report' : 'Reviewed transcript ready' : 'Awaiting transcript'}</small></span><span aria-hidden="true">↗</span></button>
         </div>
         {transcript.trim() && <div className="inbox-transcript-peek"><strong>Transcript excerpt</strong><p>{transcript.trim().slice(0, 150)}{transcript.trim().length > 150 ? '…' : ''}</p></div>}
         <button type="button" className="inbox-context-cta" onClick={report ? onReport : onMeeting}>{report ? 'Review cited report' : 'Continue to meeting'} <span aria-hidden="true">→</span></button>
