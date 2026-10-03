@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+coverage/
+
+# Secrets
+.env
+.env.*
+!.env.example
+local.settings.json
+
+# Tooling
+.azure/
+.swa/
+*.log

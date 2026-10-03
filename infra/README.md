@@ -1,0 +1,53 @@
+# Deeproot infrastructure
+
+Bicep templates for every Azure resource Deeproot uses. Owner: Teammate 1 (Azure platform).
+
+All resources live in `rg-deeproot` on the NJIT Azure for Students subscription. NJIT policy only allows `eastus2`, `canadacentral`, `mexicocentral`, `westus2` and `norwayeast`.
+
+| Resource | Name | Tier | Region |
+| --- | --- | --- | --- |
+| Azure OpenAI | `deeproot-aoai-ya332`, deployment `chat` (gpt-4.1-mini, 50K TPM) | S0, pay per token | East US 2 |
+| Speech | `deeproot-speech-ya332` | F0 (free, 5 audio hours/month) | East US 2 |
+| AI Search | `deeproot-search-ya332`, index `sources` | Free | West US 2 |
+| Cosmos DB | `deeproot-cosmos-ya332`, database `deeproot`, containers `sources`, `briefs`, `reports` (partition key `/accountId`) | Free tier, capped at 1000 RU/s | East US 2 |
+| Static Web Apps | `deeproot-web-ya332` | Free | East US 2 |
+| Budget | `deeproot-budget`, $25/month, emails at 50%, 90% and forecast 100% | — | Subscription |
+
+Search is in West US 2 because East US 2 had no free Search capacity on 2026-10-03.
+
+## Files
+
+| File | Purpose |
+| --- | --- |
+| `main.bicep` | Subscription scope: resource group, budget, and the module below |
+| `resources.bicep` | Every service, plus the web app's settings (keys are read from the resources, never stored in git) |
+| `main.bicepparam` | Values for this subscription |
+| `search-index.json` | Search index schema, mirroring `SourceRecord` |
+| `deploy.ps1` | Deploys the templates, then creates or updates the Search index |
+| `write-local-settings.ps1` | Copies the deployed app settings into ignored `api/local.settings.json` and `.env` |
+
+## Usage
+
+Requires the Azure CLI signed in with `az login` (NJIT account) on the Azure for Students subscription.
+
+```powershell
+.\infra\deploy.ps1 -WhatIf      # preview changes
+.\infra\deploy.ps1              # apply; safe to rerun
+.\infra\write-local-settings.ps1
+```
+
+The setting names are listed in `/.env.example`. Teammates without Azure access work against the stub adapters and don't need these values.
+
+## Linear key
+
+The app-settings resource replaces every setting on each deploy. `deploy.ps1` carries an existing `LINEAR_API_KEY` forward. To set or change it, run `$env:LINEAR_API_KEY = '<key>'` before `.\infra\deploy.ps1`.
+
+## Search access rules
+
+Every query must filter on both account and user, for example:
+
+```
+accountId eq 'acme' and allowedUserIds/any(u: u eq '<signed-in user id>')
+```
+
+Document keys may only contain letters, digits, `_`, `-` and `=`.
