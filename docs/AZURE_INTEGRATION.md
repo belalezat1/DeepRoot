@@ -36,7 +36,7 @@ The in-memory versions (`InMemorySourceSearch`, `InMemoryAnalysisStore`, `InMemo
 
 ### Security rules the backend relies on
 
-- Get `user` with `resolveUser(request.headers.get("x-ms-client-principal"))` from `api/src/access.ts`. Sign-in is off for the demo: it returns the demo presenter for every request unless the app setting `REQUIRE_SIGN_IN=true`, in which case it reads the GitHub user from the Static Web Apps header (or `null` when signed out). Never take the user from the request body. Account access checks run either way.
+- `user` comes from `requestUser(header, process.env.DEMO_USER_ID)` in [functions/principal.ts](../api/src/functions/principal.ts). With the `DEMO_USER_ID` app setting (demo mode), every request acts as that user with no sign-in; leave it empty to require Static Web Apps sign-in. Never take the user from the request body. Account access checks run either way.
 - Error bodies never name an account or source. Detailed errors go to logs only.
 - After seeding, run `checkSourceSearchIsolation(yourSearch)` (exported from `@deeproot/api`) against the real store. It throws on any filter bug.
 

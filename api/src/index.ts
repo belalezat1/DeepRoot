@@ -20,3 +20,4 @@ export * from "./handlers/reports.js";
 export * from "./handlers/transcribe.js";
 export * from "./backend.js";
 export * from "./testing/conformance.js";
+export * from "./adapters/index.js";

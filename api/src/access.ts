@@ -1,31 +1,8 @@
-import { DEMO_USERS } from "@deeproot/demo";
 import type { Account, SourceRecord } from "@deeproot/shared";
 import { ApiFailure } from "./errors.js";
 
 /** The signed-in user, taken from the Static Web Apps auth header (never from the request body). */
 export type SignedInUser = { userId: string };
-
-/** Who every request acts as while sign-in is off. Access checks still run, so BetaCo stays hidden. */
-export const DEMO_USER: SignedInUser = { userId: DEMO_USERS.presenter };
-
-/**
- * The user for a request. Functions wrappers call this with the `x-ms-client-principal` header.
- * Sign-in is OFF by default for the demo: everyone acts as DEMO_USER.
- * Set REQUIRE_SIGN_IN=true to use the real GitHub identity from Static Web Apps instead.
- */
-export function resolveUser(
-  principalHeader: string | null | undefined,
-  env: Record<string, string | undefined> = process.env,
-): SignedInUser | null {
-  if (env.REQUIRE_SIGN_IN !== "true") return DEMO_USER;
-  if (!principalHeader) return null;
-  try {
-    const principal = JSON.parse(Buffer.from(principalHeader, "base64").toString("utf8")) as { userDetails?: unknown };
-    return typeof principal.userDetails === "string" && principal.userDetails ? { userId: principal.userDetails } : null;
-  } catch {
-    return null;
-  }
-}
 
 export interface AccountDirectory {
   getAccount(accountId: string): Promise<Account | null>;
