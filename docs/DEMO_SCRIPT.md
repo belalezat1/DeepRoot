@@ -4,7 +4,7 @@ Aim for **4:30** so there's room for a slow page load. Rehearse on the deployed 
 
 ## Before you present
 
-- [ ] Deployed app is open and signed in as the presenter (the GitHub username in `demo/src/fixtures.ts`).
+- [ ] Deployed app is open. Sign-in is off, so every visitor acts as the demo presenter: don't share the URL publicly, since anyone with it can create Linear issues.
 - [ ] Second tab: Linear, **Deeproot** team issue list, logged in. Old test issues deleted.
 - [ ] `meeting.wav` is on the laptop (see [demo/meeting-script.md](../demo/meeting-script.md)). Don't download it live.
 - [ ] Load the Northstar page once beforehand so the brief is cached and appears instantly.
@@ -77,4 +77,3 @@ Optional: click Create again. "Clicking twice returns the same issue, so no dupl
 | Report is slow | Keep talking through the brief citations; it usually finishes within 20 seconds |
 | Linear fails | Use the prefilled Linear form link |
 | Model is down | The brief still shows emails. Open a report generated during rehearsal (keep its link handy) and continue from the Linear step |
-| Sign-in expired | Sign in again before starting; don't do it live |
