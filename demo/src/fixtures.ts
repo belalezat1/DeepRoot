@@ -72,6 +72,18 @@ export const ACME_MEETING_TRANSCRIPT = [
 
 export const ACME_MEETING_DATE = "2026-10-01T15:00:00Z"; // Thursday, so "Friday" is 2026-10-02
 
+/** The meeting as a source record, so report citations can point at transcript lines. */
+export const ACME_MEETING_SOURCE: SourceRecord = {
+  id: "acme-meeting-transcript",
+  accountId: "acme",
+  kind: "meeting",
+  title: "Acme payroll check-in",
+  author: "Meeting transcript",
+  occurredAt: ACME_MEETING_DATE,
+  body: ACME_MEETING_TRANSCRIPT,
+  allowedUserIds: acmeUsers,
+};
+
 export const BETACO_EMAIL: SourceRecord = {
   id: "betaco-email-payroll",
   accountId: "betaco",
