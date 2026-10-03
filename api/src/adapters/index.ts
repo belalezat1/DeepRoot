@@ -1,36 +1,34 @@
 // Teammate 1's adapters. createAdapters() picks Azure for each service whose settings are present
 // (see api/.env.example) and an in-memory or stub version otherwise, so the API runs without keys.
-// In-memory storage and search start with the demo seed data.
+// In-memory search starts with the demo seed data.
 import type { AccountDirectory } from "../access.js";
-import { buildSeedSources, SEED_ACCOUNTS } from "../ingest/seed.js";
+import type { ChatModel } from "../agent/model.js";
 import type { TranscribeAudio } from "../ingest/meeting.js";
+import { buildSeedSources, SEED_ACCOUNTS } from "../ingest/seed.js";
 import { InMemoryAccountDirectory, InMemoryReportStore, type ReportStore } from "../store/reports.js";
-import {
-  connectCosmos,
-  CosmosAccountDirectory,
-  CosmosReportStore,
-  CosmosSourceStore,
-  InMemorySourceStore,
-  type SourceStore,
-} from "./cosmos.js";
-import { createAzureSourceSearch, createInMemorySourceSearch, type SourceSearch } from "./search.js";
+import { InMemorySourceSearch, type SourceSearch, type SourceWriter } from "../store/sources.js";
+import { AzureSourceWriter, connectCosmos, CosmosAccountDirectory, CosmosReportStore } from "./cosmos.js";
+import { AzureSourceSearch } from "./search.js";
 import { createAzureSpeechTranscriber, createStubTranscriber } from "./speech.js";
+import { createChatModel } from "./text/chatModel.js";
 import { createTextGenerator, type TextGenerator } from "./text/index.js";
 
 export * from "./cosmos.js";
 export { AdapterError } from "./http.js";
 export * from "./search.js";
 export * from "./speech.js";
+export { createChatModel } from "./text/chatModel.js";
 export * from "./text/index.js";
 
 export type Adapters = {
   transcribeAudio: TranscribeAudio;
   textGenerator: TextGenerator;
+  chatModel: ChatModel;
   reports: ReportStore;
   accounts: AccountDirectory;
-  sources: SourceStore;
   search: SourceSearch;
-  /** Which implementation each service uses, for logs and the health check. */
+  sourceWriter: SourceWriter;
+  /** Which implementation each service uses, for logs and checks. */
   backends: { speech: string; model: string; storage: string; search: string };
 };
 
@@ -44,7 +42,7 @@ export function createAdapters(env: NodeJS.ProcessEnv = process.env): Adapters {
     : undefined;
 
   const azureSearch = env.AZURE_SEARCH_ENDPOINT && env.AZURE_SEARCH_QUERY_KEY
-    ? createAzureSourceSearch({
+    ? new AzureSourceSearch({
         endpoint: env.AZURE_SEARCH_ENDPOINT,
         index: env.AZURE_SEARCH_INDEX ?? "sources",
         queryKey: env.AZURE_SEARCH_QUERY_KEY,
@@ -52,20 +50,23 @@ export function createAdapters(env: NodeJS.ProcessEnv = process.env): Adapters {
       })
     : undefined;
 
-  const seedSources = !cosmos || !azureSearch ? buildSeedSources() : [];
+  // Writing a source needs both Cosmos and Search; otherwise one in-memory store serves search and writes.
+  const memory = cosmos && azureSearch ? undefined : new InMemorySourceSearch(buildSeedSources());
+  const textGenerator = createTextGenerator(env);
 
   return {
     transcribeAudio: speech ?? createStubTranscriber(),
-    textGenerator: createTextGenerator(env),
+    textGenerator,
+    chatModel: createChatModel(textGenerator),
     reports: cosmos ? new CosmosReportStore(cosmos.reports) : new InMemoryReportStore(),
     accounts: cosmos ? new CosmosAccountDirectory(cosmos.accounts) : new InMemoryAccountDirectory(SEED_ACCOUNTS),
-    sources: cosmos ? new CosmosSourceStore(cosmos.sources) : new InMemorySourceStore(seedSources),
-    search: azureSearch ?? createInMemorySourceSearch(seedSources),
+    search: memory ?? azureSearch!,
+    sourceWriter: memory ?? new AzureSourceWriter(cosmos!.sources, azureSearch!),
     backends: {
       speech: speech ? "azure" : "stub",
       model: env.MODEL_PROVIDER ?? "stub",
       storage: cosmos ? "cosmos" : "memory",
-      search: azureSearch ? "azure" : "memory",
+      search: memory ? "memory" : "azure",
     },
   };
 }

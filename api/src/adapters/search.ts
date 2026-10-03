@@ -1,91 +1,59 @@
-// AI Search adapter. Every query is filtered to one account AND the signed-in user's access list on the
-// search service itself, then checked again here, so restricted text never reaches the model.
+// AI Search adapter for the backend's SourceSearch. Every query is filtered to one account AND the
+// signed-in user's access list on the search service itself, then checked again here.
 import type { SourceRecord } from "@deeproot/shared";
 import { filterPermittedSources } from "../access.js";
+import type { SourceSearch, SourceSearchRequest } from "../store/sources.js";
 import { postJson } from "./http.js";
 
 const API_VERSION = "2024-07-01";
 
-export type SearchQuery = {
-  accountId: string;
-  userId: string;
-  /** Free text; empty or "*" returns the account's most recent sources. */
-  text: string;
-  top?: number;
-};
+export class AzureSourceSearch implements SourceSearch {
+  private readonly docsUrl: string;
 
-export interface SourceSearch {
-  searchPermittedSources(query: SearchQuery): Promise<SourceRecord[]>;
-  indexSources(sources: SourceRecord[]): Promise<void>;
-}
+  constructor(
+    private readonly config: {
+      endpoint: string;
+      index: string;
+      /** Query key: read-only, used for searches. */
+      queryKey: string;
+      /** Admin key: needed only to index sources. */
+      adminKey?: string;
+    },
+  ) {
+    this.docsUrl = `${config.endpoint.replace(/\/$/, "")}/indexes/${encodeURIComponent(config.index)}/docs`;
+  }
 
-export function createAzureSourceSearch(config: {
-  endpoint: string;
-  index: string;
-  /** Query key: read-only, used for searches. */
-  queryKey: string;
-  /** Admin key: needed only for indexSources. */
-  adminKey?: string;
-}): SourceSearch {
-  const base = `${config.endpoint.replace(/\/$/, "")}/indexes/${encodeURIComponent(config.index)}/docs`;
+  async search({ accountId, userId, query, top }: SourceSearchRequest): Promise<SourceRecord[]> {
+    const text = query.trim();
+    const data = (await postJson(
+      "Azure AI Search",
+      `${this.docsUrl}/search?api-version=${API_VERSION}`,
+      { "api-key": this.config.queryKey },
+      {
+        search: text || "*",
+        filter: permittedFilter(accountId, userId),
+        top,
+        // An empty query means "most recent"; otherwise Search ranks by relevance.
+        ...(text ? {} : { orderby: "occurredAt desc" }),
+      },
+      { timeoutMs: 10_000 },
+    )) as { value: Array<Record<string, unknown>> };
 
-  return {
-    async searchPermittedSources({ accountId, userId, text, top = 8 }) {
-      const query = text.trim() || "*";
-      const data = (await postJson(
+    return filterPermittedSources(data.value.map(toSourceRecord), accountId, userId);
+  }
+
+  /** Adds or replaces sources by ID. */
+  async index(sources: SourceRecord[]): Promise<void> {
+    if (!this.config.adminKey) throw new Error("AZURE_SEARCH_ADMIN_KEY is required to index sources");
+    for (let i = 0; i < sources.length; i += 500) {
+      await postJson(
         "Azure AI Search",
-        `${base}/search?api-version=${API_VERSION}`,
-        { "api-key": config.queryKey },
-        {
-          search: query,
-          filter: permittedFilter(accountId, userId),
-          top,
-          ...(query === "*" ? { orderby: "occurredAt desc" } : {}),
-        },
-        { timeoutMs: 10_000 },
-      )) as { value: Array<SourceRecord & Record<`@${string}`, unknown>> };
-
-      const sources = data.value.map(
-        (doc) => Object.fromEntries(Object.entries(doc).filter(([key]) => !key.startsWith("@"))) as SourceRecord,
+        `${this.docsUrl}/index?api-version=${API_VERSION}`,
+        { "api-key": this.config.adminKey },
+        { value: sources.slice(i, i + 500).map((s) => ({ "@search.action": "mergeOrUpload", ...s })) },
       );
-      return filterPermittedSources(
-        sources.map((s) => (s.app === null ? withoutApp(s) : s)),
-        accountId,
-        userId,
-      );
-    },
-
-    async indexSources(sources) {
-      if (!config.adminKey) throw new Error("AZURE_SEARCH_ADMIN_KEY is required to index sources");
-      for (let i = 0; i < sources.length; i += 500) {
-        await postJson(
-          "Azure AI Search",
-          `${base}/index?api-version=${API_VERSION}`,
-          { "api-key": config.adminKey },
-          { value: sources.slice(i, i + 500).map((s) => ({ "@search.action": "mergeOrUpload", ...s })) },
-        );
-      }
-    },
-  };
-}
-
-/** In-memory search with the same access rules, for tests and local runs without Azure. */
-export function createInMemorySourceSearch(initial: SourceRecord[] = []): SourceSearch {
-  const sources = new Map(initial.map((s) => [s.id, structuredClone(s)]));
-  return {
-    async searchPermittedSources({ accountId, userId, text, top = 8 }) {
-      const terms = text.toLowerCase().split(/\W+/).filter((t) => t && t !== "*");
-      const permitted = filterPermittedSources([...sources.values()], accountId, userId);
-      return permitted
-        .filter((s) => terms.length === 0 || terms.some((t) => `${s.title} ${s.body}`.toLowerCase().includes(t)))
-        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
-        .slice(0, top)
-        .map((s) => structuredClone(s));
-    },
-    async indexSources(records) {
-      for (const s of records) sources.set(s.id, structuredClone(s));
-    },
-  };
+    }
+  }
 }
 
 /** OData filter for one account and one user. Quotes are doubled so IDs can't break out of the string. */
@@ -94,8 +62,8 @@ export function permittedFilter(accountId: string, userId: string): string {
   return `accountId eq ${quote(accountId)} and allowedUserIds/any(u: u eq ${quote(userId)})`;
 }
 
-/** Search returns `app: null` for records without one; the contract leaves the field out instead. */
-function withoutApp(source: SourceRecord): SourceRecord {
-  const { app: _app, ...rest } = source;
-  return rest;
+/** Drops Search metadata (@search.score) and the null `app` Search returns for records without one. */
+function toSourceRecord(doc: Record<string, unknown>): SourceRecord {
+  const entries = Object.entries(doc).filter(([key, value]) => !key.startsWith("@") && !(key === "app" && value === null));
+  return Object.fromEntries(entries) as SourceRecord;
 }

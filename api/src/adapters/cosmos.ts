@@ -4,12 +4,8 @@ import { CosmosClient, type Container } from "@azure/cosmos";
 import type { Account, MeetingReport, SourceRecord } from "@deeproot/shared";
 import type { AccountDirectory } from "../access.js";
 import type { ReportStore } from "../store/reports.js";
-
-/** Reads and writes source records, partitioned by account. */
-export interface SourceStore {
-  listByAccount(accountId: string): Promise<SourceRecord[]>;
-  upsertMany(sources: SourceRecord[]): Promise<void>;
-}
+import type { SourceWriter } from "../store/sources.js";
+import type { AzureSourceSearch } from "./search.js";
 
 export type CosmosContainers = {
   reports: Container;
@@ -45,42 +41,21 @@ export class CosmosAccountDirectory implements AccountDirectory {
     return readById<Account>(this.container, accountId);
   }
 
-  async upsertMany(accounts: Account[]): Promise<void> {
-    for (const account of accounts) await this.container.items.upsert(account);
+  async save(account: Account): Promise<void> {
+    await this.container.items.upsert(account);
   }
 }
 
-export class CosmosSourceStore implements SourceStore {
-  constructor(private readonly container: Container) {}
+/** Saves a source to Cosmos DB (the record of truth) and then to the Search index, so searches find it. */
+export class AzureSourceWriter implements SourceWriter {
+  constructor(
+    private readonly container: Container,
+    private readonly search: AzureSourceSearch,
+  ) {}
 
-  async listByAccount(accountId: string): Promise<SourceRecord[]> {
-    const { resources } = await this.container.items
-      .query<SourceRecord>(
-        { query: "SELECT * FROM c WHERE c.accountId = @accountId", parameters: [{ name: "@accountId", value: accountId }] },
-        { partitionKey: accountId },
-      )
-      .fetchAll();
-    return resources.map(withoutSystemFields);
-  }
-
-  async upsertMany(sources: SourceRecord[]): Promise<void> {
-    for (const source of sources) await this.container.items.upsert(source);
-  }
-}
-
-export class InMemorySourceStore implements SourceStore {
-  private readonly sources = new Map<string, SourceRecord>();
-
-  constructor(initial: SourceRecord[] = []) {
-    for (const s of initial) this.sources.set(s.id, structuredClone(s));
-  }
-
-  async listByAccount(accountId: string) {
-    return [...this.sources.values()].filter((s) => s.accountId === accountId).map((s) => structuredClone(s));
-  }
-
-  async upsertMany(sources: SourceRecord[]) {
-    for (const s of sources) this.sources.set(s.id, structuredClone(s));
+  async save(source: SourceRecord): Promise<void> {
+    await this.container.items.upsert(source);
+    await this.search.index([source]);
   }
 }
 

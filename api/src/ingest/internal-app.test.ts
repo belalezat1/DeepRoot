@@ -28,6 +28,7 @@ describe("Implementation Tracker", () => {
         "Status: Blocked",
         "Assignee: Unassigned",
         "Due: 2026-10-08",
+        "Go-live: 2026-10-22",
         "Notes: State tax mapping incomplete. Waiting on client's Ohio withholding account number. PA local tax codes missing for 14 employees.",
       ].join("\n"),
       allowedUserIds: [DEMO_USERS.presenter],

@@ -19,6 +19,7 @@ export const IMPLEMENTATION_TRACKER: InternalAppConnector = {
     { label: "Status", path: "status" },
     { label: "Assignee", path: "assignee", ifMissing: "Unassigned" },
     { label: "Due", path: "due_date" },
+    { label: "Go-live", path: "go_live" },
     { label: "Notes", path: "notes" },
   ],
   accounts: {

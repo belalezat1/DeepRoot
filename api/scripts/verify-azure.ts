@@ -1,4 +1,4 @@
-// Verification record for the Azure services, against live resources. Seed first (npm run seed:azure -w api).
+// Verification record for the Azure services, against live resources. Seed first (npm run seed -w api).
 // Run: npm run verify:azure -w api [-- path/to/meeting.wav]   (reads api/.env; exits 1 if any check fails)
 import { readFile } from "node:fs/promises";
 import { BETACO_CANARY, DEMO_USERS, SAMPLE_NORTHSTAR_REPORT } from "@deeproot/demo";
@@ -47,17 +47,20 @@ await check("Cosmos: write and read report", async () => {
   return "round trip identical; test report deleted";
 });
 
-await check("Cosmos: list account sources", async () => {
-  const sources = await adapters.sources.listByAccount("northstar");
-  assert(sources.length > 0 && sources.every((s) => s.accountId === "northstar"), "no northstar sources");
-  return `${sources.length} northstar sources`;
+await check("Search: most recent sources", async () => {
+  const recent = await adapters.search.search({ accountId: "northstar", userId: DEMO_USERS.presenter, query: "", top: 25 });
+  assert(recent.length > 0 && recent.every((s) => s.accountId === "northstar"), "no northstar sources");
+  const dates = recent.map((s) => s.occurredAt);
+  assert(dates.every((d, i) => i === 0 || dates[i - 1]! >= d), "not sorted newest first");
+  return `${recent.length} northstar sources, newest first`;
 });
 
 await check("Search: permitted results", async () => {
-  const hits = await adapters.search.searchPermittedSources({
+  const hits = await adapters.search.search({
     accountId: "northstar",
     userId: DEMO_USERS.presenter,
-    text: "payroll export Canada",
+    query: "Ohio Pennsylvania state tax",
+    top: 8,
   });
   assert(hits.length > 0 && hits.every((s) => s.accountId === "northstar"), "no northstar results");
   return `${hits.length} northstar results, e.g. "${hits[0]!.title}"`;
@@ -65,18 +68,28 @@ await check("Search: permitted results", async () => {
 
 await check("Search: BetaCo hidden from presenter", async () => {
   for (const accountId of ["betaco", "northstar"]) {
-    const hits = await adapters.search.searchPermittedSources({
+    const hits = await adapters.search.search({
       accountId,
       userId: DEMO_USERS.presenter,
-      text: `BetaCo payroll ${BETACO_CANARY}`,
+      query: `BetaCo payroll ${BETACO_CANARY}`,
       top: 50,
     });
     assert(hits.every((s) => s.accountId === "northstar"), `BetaCo record returned when querying ${accountId}`);
     assert(!JSON.stringify(hits).includes(BETACO_CANARY), "BetaCo canary leaked");
   }
-  const own = await adapters.search.searchPermittedSources({ accountId: "betaco", userId: DEMO_USERS.betacoLead, text: "*" });
+  const own = await adapters.search.search({ accountId: "betaco", userId: DEMO_USERS.betacoLead, query: "", top: 50 });
   assert(own.length > 0, "BetaCo data missing for its own lead, so the isolation check proves nothing");
   return `presenter sees 0 BetaCo records; BetaCo lead sees ${own.length}`;
+});
+
+await check("Model: analysis ChatModel (JSON)", async () => {
+  const text = await adapters.chatModel.complete({
+    system: "Reply with a JSON object only.",
+    user: 'Return {"status":"ok"}',
+    maxTokens: 300,
+  });
+  assert((JSON.parse(text) as { status?: string }).status === "ok", `unexpected reply: ${text.slice(0, 80)}`);
+  return text.trim();
 });
 
 await check("Model: generate", async () => {
