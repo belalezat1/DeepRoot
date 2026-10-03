@@ -3,9 +3,13 @@ import { ApiFailure } from "../errors.js";
 import { normalizeText, safeId, toIsoDate } from "./text.js";
 
 /**
- * What ingest needs from Teammate 1's Speech adapter (Azure fast transcription with diarization).
- * Speaker labels are whatever Speech returns ("1", "Guest-1"); `speakerNames` maps them to people.
- * Placeholder until Teammate 1 publishes the real adapter interface.
+ * Transcription, implemented by the Azure teammate (Azure Speech). See docs/AZURE_INTEGRATION.md.
+ *
+ * - Input: a WAV file's bytes, already validated (RIFF/WAVE, at most 25 MB) before this is called.
+ * - Output: segments in time order. Set `speaker` to the service's raw diarization label ("1",
+ *   "Guest-1"); `speakerNames` maps labels to people. Omit `speaker` if diarization is unavailable.
+ * - Throw on failure. The backend falls back to the account's prepared transcript (marked
+ *   "prepared-fallback"), or returns TRANSCRIPTION_FAILED (502) if there is none.
  */
 export type TranscribeAudio = (audio: Uint8Array) => Promise<TranscriptSegment[]>;
 
@@ -58,7 +62,8 @@ export function formatTranscript(
     const text = seg.text.trim();
     if (!text) continue;
     const last = lines.at(-1);
-    if (last && last.speaker === seg.speaker) last.text += ` ${text}`;
+    // Without diarization there is no way to know two segments share a speaker: keep them as lines.
+    if (last && seg.speaker !== undefined && last.speaker === seg.speaker) last.text += ` ${text}`;
     else lines.push({ speaker: seg.speaker, text });
   }
   return normalizeText(

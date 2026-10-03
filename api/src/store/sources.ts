@@ -9,18 +9,27 @@ export type SourceSearchRequest = {
 };
 
 /**
- * Retrieval over ingested SourceRecords. Teammate 1 implements this with Azure AI Search; every query
- * must filter on both fields, in the index, before ranking:
- *   accountId eq '<accountId>' and allowedUserIds/any(u: u eq '<userId>')
- * The agent re-checks every result anyway, and refuses to run if a filter was missed.
+ * Retrieval over ingested SourceRecords. Implemented by the Azure teammate (Azure AI Search or Cosmos
+ * DB; the backend does not care which). See docs/AZURE_INTEGRATION.md.
+ *
+ * - Return at most `top` records, whole and unmodified, for `accountId` that list `userId` in
+ *   `allowedUserIds`. Both filters belong in the query itself, never applied after ranking.
+ *   Cosmos example: WHERE c.accountId = @accountId AND ARRAY_CONTAINS(c.allowedUserIds, @userId)
+ *   AI Search example: accountId eq '<id>' and allowedUserIds/any(u: u eq '<user>')
+ * - Empty `query`: newest first. Otherwise rank by relevance (the demo corpus fits whole, so plain
+ *   newest-first is acceptable at first).
+ * - Throw on service failure; the backend returns INTEGRATION_UNAVAILABLE (503).
+ * - If a filter is ever missed, the agent refuses to run (500) rather than analyze the result.
  */
 export interface SourceSearch {
   search(req: SourceSearchRequest): Promise<SourceRecord[]>;
 }
 
 /**
- * Stores a new source (such as a reviewed meeting transcript) so later searches find it.
- * Teammate 1 implements this with Cosmos DB plus an AI Search index update. Saving the same ID replaces it.
+ * Stores a source (an ingested email or app record, or a reviewed meeting transcript) so later
+ * searches find it. Implemented by the Azure teammate (Cosmos DB, plus an AI Search index update if
+ * Search is used). Saving the same `id` replaces it. Store the record as given, including
+ * `allowedUserIds`. Throw on failure; the backend returns INTEGRATION_UNAVAILABLE (503).
  */
 export interface SourceWriter {
   save(source: SourceRecord): Promise<void>;
@@ -28,17 +37,17 @@ export interface SourceWriter {
 
 const words = (text: string) => text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 
-/** Same filters as the Azure version, with simple keyword ranking. For tests and local runs. */
+/** Reference implementation with the required filters and simple keyword ranking. For tests and local runs. */
 export class InMemorySourceSearch implements SourceSearch, SourceWriter {
-  private readonly sources: SourceRecord[];
+  private readonly sources = new Map<string, SourceRecord>();
 
-  constructor(sources: SourceRecord[]) {
-    this.sources = sources.map((s) => structuredClone(s));
+  constructor(initial: SourceRecord[] = []) {
+    for (const s of initial) this.sources.set(s.id, structuredClone(s));
   }
 
   async search({ accountId, userId, query, top }: SourceSearchRequest): Promise<SourceRecord[]> {
     const terms = new Set(words(query));
-    return this.sources
+    return [...this.sources.values()]
       .filter((s) => s.accountId === accountId && s.allowedUserIds.includes(userId))
       .map((s) => ({ s, score: words(`${s.title} ${s.body}`).filter((w) => terms.has(w)).length }))
       .filter(({ score }) => terms.size === 0 || score > 0)
@@ -47,9 +56,7 @@ export class InMemorySourceSearch implements SourceSearch, SourceWriter {
       .map(({ s }) => structuredClone(s));
   }
 
-  async save(source: SourceRecord) {
-    const i = this.sources.findIndex((s) => s.id === source.id);
-    if (i === -1) this.sources.push(structuredClone(source));
-    else this.sources[i] = structuredClone(source);
+  async save(source: SourceRecord): Promise<void> {
+    this.sources.set(source.id, structuredClone(source));
   }
 }

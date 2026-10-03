@@ -7,30 +7,13 @@ import { toPublicSource } from "../qa/context.js";
 const MAX_EMAILS = 10;
 const MAX_ITEMS = 6;
 
-/** Briefs per account and user, so reloading the page doesn't call the model again. */
-export class BriefCache {
-  private readonly entries = new Map<string, { brief: AccountBrief; expires: number }>();
+export type BriefDeps = AnalyzeDeps;
 
-  constructor(private readonly ttlMs = 10 * 60_000) {}
-
-  get(accountId: string, userId: string, now: number): AccountBrief | null {
-    const entry = this.entries.get(`${accountId}\u0000${userId}`);
-    return entry && entry.expires > now ? structuredClone(entry.brief) : null;
-  }
-
-  set(accountId: string, userId: string, brief: AccountBrief, now: number) {
-    this.entries.set(`${accountId}\u0000${userId}`, { brief: structuredClone(brief), expires: now + this.ttlMs });
-  }
-
-  /** Call after new sources arrive for an account (for example a saved meeting). */
-  clear() {
-    this.entries.clear();
-  }
-}
-
-export type BriefDeps = AnalyzeDeps & { cache: BriefCache };
-
-/** GET /api/accounts/:id/brief: recent emails plus a cited pre-meeting brief. */
+/**
+ * GET /api/accounts/:id/brief: recent emails plus a cited pre-meeting brief.
+ * Reuses the caller's latest stored analysis; only runs the agent (which stores its result) when
+ * there is none yet, so reloading the page doesn't call the model again.
+ */
 export async function handleGetBrief(
   input: { user: SignedInUser | null; accountId: string },
   deps: BriefDeps,
@@ -38,7 +21,6 @@ export async function handleGetBrief(
   try {
     const user = requireUser(input.user);
     const account = await authorizeAccount(user, input.accountId, deps.accounts);
-    const now = (deps.now ?? (() => new Date()))();
 
     const recent = filterPermittedSources(
       await deps.search.search({ accountId: account.id, userId: user.userId, query: "", top: 25 }),
@@ -51,18 +33,19 @@ export async function handleGetBrief(
       .slice(0, MAX_EMAILS)
       .map(toPublicSource);
 
-    let brief = deps.cache.get(account.id, user.userId, now.getTime());
-    if (!brief) {
-      try {
-        brief = toBrief(await analyzeAccount({ user, accountId: account.id }, deps));
-        deps.cache.set(account.id, user.userId, brief, now.getTime());
-      } catch (err) {
-        // The emails are still useful when the model is down; show them with an honest note (not cached).
-        if (!(err instanceof ApiFailure) || (err.code !== "INTEGRATION_UNAVAILABLE" && err.code !== "INVALID_MODEL_OUTPUT")) {
-          throw err;
-        }
-        brief = { summary: "The brief couldn't be generated right now. The emails below are current.", items: [], openQuestions: [] };
+    let brief: AccountBrief;
+    try {
+      const stored = await deps.analyses.latest(account.id, user.userId).catch((err: unknown) => {
+        console.error("Loading the latest analysis failed; running a new one", err);
+        return null;
+      });
+      brief = toBrief(stored ?? (await analyzeAccount({ user, accountId: account.id }, deps)));
+    } catch (err) {
+      // The emails are still useful when the model is down; show them with an honest note.
+      if (!(err instanceof ApiFailure) || (err.code !== "INTEGRATION_UNAVAILABLE" && err.code !== "INVALID_MODEL_OUTPUT")) {
+        throw err;
       }
+      brief = { summary: "The brief couldn't be generated right now. The emails below are current.", items: [], openQuestions: [] };
     }
 
     return { status: 200, body: { account: { id: account.id, name: account.name }, emails, brief } };

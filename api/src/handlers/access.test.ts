@@ -4,7 +4,8 @@ import type { HandlerResult } from "../errors.js";
 import { ACCOUNTS, BETACO_CANARY, DEMO_USERS, NORTHSTAR_MEETING_TRANSCRIPT, SAMPLE_NORTHSTAR_REPORT } from "@deeproot/demo";
 import { describe, expect, it, vi } from "vitest";
 import { handleAnalyze } from "./analyze.js";
-import { BriefCache, handleGetBrief } from "./brief.js";
+import { handleGetBrief } from "./brief.js";
+import { InMemoryAnalysisStore } from "../store/analyses.js";
 import { handleChat } from "./chat.js";
 import { handleClaimCheck } from "./claims.js";
 import { handleCreateLinearIssue } from "./createLinearIssue.js";
@@ -29,7 +30,7 @@ function setup() {
     reports: new InMemoryReportStore([{ ...SAMPLE_NORTHSTAR_REPORT }]),
     model,
     generateReport,
-    cache: new BriefCache(),
+    analyses: new InMemoryAnalysisStore(),
     linear: { apiKey: "k", teamId: "t", fetch: linearFetch as typeof fetch },
     appBaseUrl: "https://deeproot.example",
   };

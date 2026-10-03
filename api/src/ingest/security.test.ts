@@ -47,13 +47,13 @@ describe("BetaCo isolation", () => {
   it("an email CC'ing both accounts is rejected rather than filed under either", () => {
     const result = ingestEmails([CROSS_ACCOUNT_EMAIL], DEMO_EMAIL_ROUTING, ACCOUNTS);
     expect(result.records).toEqual([]);
-    expect(result.rejected[0]?.reason).toBe("addressed to more than one account mailbox (northstar, betaco)");
+    expect(result.rejected[0]?.reason).toBe("addressed to more than one account mailbox");
   });
 
   it("a record mapped to an account that is not configured is rejected", () => {
     const routing = { mailboxes: { ...DEMO_EMAIL_ROUTING.mailboxes, "x@accounts.meridianpay.example": "gamma" } };
     const email = { ...CROSS_ACCOUNT_EMAIL, to: ["x@accounts.meridianpay.example"], cc: [] };
-    expect(ingestEmails([email], routing, ACCOUNTS).rejected[0]?.reason).toBe('mailbox maps to unknown account "gamma"');
+    expect(ingestEmails([email], routing, ACCOUNTS).rejected[0]?.reason).toBe("account mailbox is not available");
   });
 });
 

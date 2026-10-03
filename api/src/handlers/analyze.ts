@@ -1,7 +1,8 @@
 import type { AgentAnalysis } from "@deeproot/shared";
-import type { SignedInUser } from "../access.js";
+import { type AccountDirectory, type SignedInUser, authorizeAccount, notFound, requireUser } from "../access.js";
 import { analyzeAccount, type AnalyzeDeps } from "../agent/analyze.js";
 import { ApiFailure, type HandlerResult, toErrorResult } from "../errors.js";
+import type { AnalysisStore } from "../store/analyses.js";
 
 export type AnalyzeHandlerInput = {
   user: SignedInUser | null;
@@ -20,6 +21,28 @@ export async function handleAnalyze(input: AnalyzeHandlerInput, deps: AnalyzeDep
     }
     const focus = typeof body.focus === "string" ? body.focus.trim() || undefined : undefined;
     return { status: 200, body: await analyzeAccount({ user: input.user, accountId: body.accountId, focus }, deps) };
+  } catch (err) {
+    return toErrorResult(err);
+  }
+}
+
+/**
+ * GET /api/accounts/:id/analysis: the caller's latest stored analysis, for the UI, morning brief,
+ * action items, and Linear drafts. Reads Cosmos only; it never calls the model.
+ */
+export async function handleGetLatestAnalysis(
+  input: { user: SignedInUser | null; accountId: string },
+  deps: { accounts: AccountDirectory; analyses: AnalysisStore },
+): Promise<HandlerResult<AgentAnalysis>> {
+  try {
+    const user = requireUser(input.user);
+    const account = await authorizeAccount(user, input.accountId, deps.accounts);
+    const analysis = await deps.analyses.latest(account.id, user.userId).catch((err: unknown) => {
+      console.error("Loading the analysis failed", err);
+      throw new ApiFailure("INTEGRATION_UNAVAILABLE", "Could not load the analysis. Please try again.");
+    });
+    if (!analysis) throw notFound();
+    return { status: 200, body: analysis };
   } catch (err) {
     return toErrorResult(err);
   }

@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 import { InMemoryAccountDirectory, InMemoryReportStore } from "../store/reports.js";
 import { InMemorySourceSearch } from "../store/sources.js";
 import { ALL_SOURCES, IDS, QUOTES, type ScriptedModel, reply, scriptedModel } from "../testing/agent.js";
-import { BriefCache, handleGetBrief } from "./brief.js";
+import { handleGetBrief } from "./brief.js";
+import { InMemoryAnalysisStore } from "../store/analyses.js";
 import { handleChat } from "./chat.js";
 import { handleClaimCheck } from "./claims.js";
 
@@ -18,7 +19,7 @@ function deps(model: ScriptedModel = scriptedModel()) {
     search: new InMemorySourceSearch(ALL_SOURCES),
     reports: new InMemoryReportStore(),
     model,
-    cache: new BriefCache(),
+    analyses: new InMemoryAnalysisStore(),
     now: () => new Date("2026-10-02T12:00:00Z"),
   };
 }
@@ -63,7 +64,7 @@ describe("GET /api/accounts/:id/brief", () => {
     expect(json(body)).not.toContain(BETACO_CANARY);
   });
 
-  it("caches the brief so a reload doesn't call the model again", async () => {
+  it("reuses the stored analysis so a reload doesn't call the model again", async () => {
     const model = scriptedModel(reply(findings));
     const d = deps(model);
 
