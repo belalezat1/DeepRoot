@@ -20,17 +20,32 @@ const ENTITIES: Record<string, string> = {
   "&lt;": "<",
   "&gt;": ">",
   "&quot;": '"',
-  "&#39;": "'",
+  "&apos;": "'",
 };
 
-/** Good-enough HTML-to-text for email bodies. Not a sanitizer: output is only ever shown as text. */
+function decodeEntities(text: string): string {
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, code: string) => {
+    if (code[0] !== "#") return ENTITIES[m.toLowerCase()] ?? m;
+    const n = code[1] === "x" || code[1] === "X" ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
+    return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;
+  });
+}
+
+/**
+ * Good-enough HTML-to-text for email bodies. Drops non-content elements and the quoted history that
+ * mail clients wrap in blockquotes. Not a sanitizer: the output is only ever handled as plain text.
+ */
 export function htmlToText(html: string): string {
-  return html
-    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
+  const text = html
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<(head|script|style|title)\b[\s\S]*?<\/\1>/gi, "")
+    .replace(/<div[^>]*class="[^"]*gmail_quote[\s\S]*$/i, "") // Gmail: quoted history runs to the end
+    .replace(/<blockquote\b[\s\S]*?<\/blockquote>/gi, "")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|li|tr|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&(nbsp|amp|lt|gt|quot|#39);/g, (m) => ENTITIES[m] ?? m);
+    .replace(/<li\b[^>]*>/gi, "- ")
+    .replace(/<[^>]+>/g, "");
+  return decodeEntities(text);
 }
 
 /** An ID safe for Cosmos DB and AI Search keys: letters, digits, dashes, underscores. */

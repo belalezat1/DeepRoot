@@ -1,4 +1,5 @@
-import type { Account, SourceRecord } from "@deeproot/shared";
+import type { Account } from "@deeproot/shared";
+import type { IngestResult } from "./result.js";
 import { normalizeText, safeId, toIsoDate } from "./text.js";
 
 /**
@@ -25,12 +26,23 @@ export type InternalAppConnector = {
   accounts: Record<string, string>;
 };
 
-export type RejectedRecord = { index: number; recordId: string | null; reason: string };
-
-export type InternalAppIngestResult = {
-  records: SourceRecord[];
-  rejected: RejectedRecord[];
-};
+/**
+ * Catches connector config mistakes when the app starts rather than as a batch of rejected rows.
+ * Checks the config's own shape only; it cannot know the app's field names are right.
+ */
+export function assertValidConnector(connector: InternalAppConnector, accounts: Account[]): void {
+  const problems: string[] = [];
+  if (safeId(connector.appId) !== connector.appId) problems.push(`appId "${connector.appId}" is not ID-safe`);
+  if (!connector.appName.trim()) problems.push("appName is empty");
+  if (connector.body.length === 0) problems.push("body maps no fields");
+  const known = new Set(accounts.map((a) => a.id));
+  for (const [key, accountId] of Object.entries(connector.accounts)) {
+    if (!known.has(accountId)) problems.push(`customer "${key}" maps to unknown account "${accountId}"`);
+  }
+  if (problems.length > 0) {
+    throw new Error(`Connector ${connector.appId} is misconfigured: ${problems.join("; ")}`);
+  }
+}
 
 /** Reads a dot path out of untyped JSON. */
 export function getPath(obj: unknown, path: string): unknown {
@@ -45,11 +57,17 @@ export function getPath(obj: unknown, path: string): unknown {
 function asText(value: unknown): string | null {
   if (typeof value === "string") return normalizeText(value) || null;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return null; // objects, arrays, null: not something we can quote reliably
+  if (Array.isArray(value)) {
+    // Lists of plain values read as "a, b"; lists of objects are skipped like any other object.
+    const parts = value.map((v) => (Array.isArray(v) ? null : asText(v)));
+    return parts.every((p) => p !== null) && parts.length > 0 ? parts.join(", ") : null;
+  }
+  return null; // objects and null: not something we can quote reliably
 }
 
 /**
- * Maps raw records from an internal app into SourceRecords. Bad records are reported in `rejected`
+ * Maps raw records from an internal app into SourceRecords. Text fields are untrusted data: they
+ * are cleaned and labelled, never interpreted. Bad records are reported in `rejected`
  * rather than failing the batch, so one malformed row never blocks the rest of an export.
  * Access always comes from the Deeproot account; fields inside the app record cannot grant access.
  */
@@ -57,9 +75,9 @@ export function ingestInternalAppRecords(
   connector: InternalAppConnector,
   rawRecords: unknown[],
   accounts: Account[],
-): InternalAppIngestResult {
+): IngestResult {
   const byId = new Map(accounts.map((a) => [a.id, a]));
-  const result: InternalAppIngestResult = { records: [], rejected: [] };
+  const result: IngestResult = { records: [], rejected: [] };
   const seen = new Set<string>();
 
   rawRecords.forEach((raw, index) => {

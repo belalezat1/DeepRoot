@@ -1,6 +1,6 @@
 import type { Account, SourceRecord, TranscribeResponse, TranscriptSegment } from "@deeproot/shared";
 import { ApiFailure } from "../errors.js";
-import { normalizeText, safeId } from "./text.js";
+import { normalizeText, safeId, toIsoDate } from "./text.js";
 
 /**
  * What ingest needs from Teammate 1's Speech adapter (Azure fast transcription with diarization).
@@ -11,17 +11,37 @@ export type TranscribeAudio = (audio: Uint8Array) => Promise<TranscriptSegment[]
 
 export const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // a 30 s 16 kHz mono WAV is about 1 MB
 
-/** Rejects anything that is not a RIFF/WAVE file, before it costs a Speech call. */
-export function assertWav(audio: Uint8Array): void {
+const CONVERT_HINT = "Convert it with: ffmpeg -i <input> -ac 1 -ar 16000 meeting.wav";
+
+/** Names the common non-WAV formats by their magic bytes, so the error can say what was uploaded. */
+export function sniffAudioFormat(audio: Uint8Array): string | null {
+  const ascii = (start: number, length: number) =>
+    String.fromCharCode(...audio.subarray(start, start + length));
+  if (ascii(0, 4) === "RIFF" && ascii(8, 4) === "WAVE") return "wav";
+  if (ascii(4, 4) === "ftyp") return "m4a/mp4"; // Zoom's audio and video recordings
+  if (ascii(0, 3) === "ID3" || (audio[0] === 0xff && ((audio[1] ?? 0) & 0xe0) === 0xe0)) return "mp3";
+  if (ascii(0, 4) === "OggS") return "ogg";
+  if (ascii(0, 4) === "fLaC") return "flac";
+  if (audio[0] === 0x1a && audio[1] === 0x45 && audio[2] === 0xdf && audio[3] === 0xa3) return "webm";
+  return null;
+}
+
+/**
+ * Rejects anything that is not a RIFF/WAVE file, before it costs a Speech call. The file name is
+ * checked too when the client sends one, but the bytes decide: a renamed .m4a is still rejected.
+ */
+export function assertWav(audio: Uint8Array, fileName?: string): void {
+  if (audio.byteLength === 0) throw new ApiFailure("BAD_REQUEST", "The audio file is empty.");
   if (audio.byteLength > MAX_AUDIO_BYTES) {
     throw new ApiFailure("BAD_REQUEST", "Audio file is larger than 25 MB.");
   }
-  const tag = (start: number) => String.fromCharCode(...audio.subarray(start, start + 4));
-  if (audio.byteLength < 12 || tag(0) !== "RIFF" || tag(8) !== "WAVE") {
-    throw new ApiFailure(
-      "BAD_REQUEST",
-      "Upload a WAV file. Convert Zoom recordings with: ffmpeg -i audio.m4a -ac 1 -ar 16000 meeting.wav",
-    );
+  const format = sniffAudioFormat(audio);
+  if (format !== "wav") {
+    const seen = format ? `This looks like ${format} audio.` : "This is not a recognized audio file.";
+    throw new ApiFailure("BAD_REQUEST", `Upload a WAV file. ${seen} ${CONVERT_HINT}`);
+  }
+  if (fileName !== undefined && !/\.wav$/i.test(fileName.trim())) {
+    throw new ApiFailure("BAD_REQUEST", `Upload a .wav file, not "${fileName}". ${CONVERT_HINT}`);
   }
 }
 
@@ -52,6 +72,7 @@ export function formatTranscript(
 
 export type TranscribeMeetingInput = {
   audio: Uint8Array;
+  fileName?: string;
   transcribe: TranscribeAudio;
   speakerNames?: Record<string, string>;
   /** The prepared transcript. Used only when Speech fails, and the response says so. */
@@ -60,7 +81,7 @@ export type TranscribeMeetingInput = {
 
 /** WAV in, transcript out. Speech failures fall back to the prepared transcript when one is given. */
 export async function transcribeMeeting(input: TranscribeMeetingInput): Promise<TranscribeResponse> {
-  assertWav(input.audio); // a bad upload is the user's to fix, so it never falls back
+  assertWav(input.audio, input.fileName); // a bad upload is the user's to fix, so it never falls back
 
   let segments: TranscriptSegment[] = [];
   try {
@@ -84,8 +105,11 @@ export async function transcribeMeeting(input: TranscribeMeetingInput): Promise<
 
 export type MeetingSourceInput = {
   account: Account;
-  /** The report this meeting belongs to; the source ID is derived from it so citations stay stable. */
-  reportId: string;
+  /**
+   * Stable ID for this meeting (the downstream report ID works). The source ID is derived from it, so
+   * re-saving a corrected transcript replaces the old version instead of adding a second meeting.
+   */
+  meetingId: string;
   transcript: string; // the presenter-reviewed transcript, not the raw Speech output
   occurredAt: string;
   title?: string;
@@ -99,14 +123,16 @@ export type MeetingSourceInput = {
 export function meetingToSource(input: MeetingSourceInput): SourceRecord {
   const body = normalizeText(input.transcript);
   if (!body) throw new ApiFailure("BAD_REQUEST", "Transcript is empty.");
+  const occurredAt = toIsoDate(input.occurredAt);
+  if (!occurredAt) throw new ApiFailure("BAD_REQUEST", "Meeting date is not a valid date.");
 
   return {
-    id: safeId(input.account.id, "meeting", input.reportId),
+    id: safeId(input.account.id, "meeting", input.meetingId),
     accountId: input.account.id,
     kind: "meeting",
     title: input.title ?? `${input.account.name} meeting`,
     author: input.author ?? "Meeting transcript",
-    occurredAt: input.occurredAt,
+    occurredAt,
     body,
     allowedUserIds: [...input.account.allowedUserIds],
   };

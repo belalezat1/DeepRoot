@@ -18,10 +18,11 @@ export const IMPLEMENTATION_TRACKER: InternalAppConnector = {
     { label: "Ticket", path: "ticket_id" },
     { label: "Status", path: "status" },
     { label: "Assignee", path: "assignee", ifMissing: "Unassigned" },
+    { label: "Due", path: "due_date" },
     { label: "Notes", path: "notes" },
   ],
   accounts: {
-    "C-1001": "acme",
+    "C-3107": "northstar",
     "C-2002": "betaco",
   },
 };

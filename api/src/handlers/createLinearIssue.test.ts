@@ -1,5 +1,5 @@
 import type { ApiError, CreateLinearIssueResponse, MeetingReport } from "@deeproot/shared";
-import { ACCOUNTS, DEMO_USERS, SAMPLE_ACME_REPORT } from "@deeproot/demo";
+import { ACCOUNTS, DEMO_USERS, SAMPLE_NORTHSTAR_REPORT } from "@deeproot/demo";
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryAccountDirectory, InMemoryReportStore } from "../store/reports.js";
 import { type CreateLinearIssueDeps, handleCreateLinearIssue } from "./createLinearIssue.js";
@@ -10,7 +10,7 @@ const outsider = { userId: "someone-else" };
 let nextId = 0;
 /** Each test gets its own report ID so in-process creation state never leaks between tests. */
 function setup(overrides: { fetch?: typeof fetch; linear?: null; report?: Partial<MeetingReport> } = {}) {
-  const report: MeetingReport = { ...structuredClone(SAMPLE_ACME_REPORT), id: `report-${++nextId}`, ...overrides.report };
+  const report: MeetingReport = { ...structuredClone(SAMPLE_NORTHSTAR_REPORT), id: `report-${++nextId}`, ...overrides.report };
   const reports = new InMemoryReportStore([report]);
   const fetchMock = vi.fn(
     overrides.fetch ??
@@ -43,7 +43,7 @@ function sentInput(fetchMock: ReturnType<typeof vi.fn>) {
 }
 
 describe("POST /api/reports/:id/linear", () => {
-  it("creates one issue, saves it on the report, and keeps both subsidiaries in the acceptance criteria", async () => {
+  it("creates one issue, saves it on the report, and keeps the reviewed acceptance criteria", async () => {
     const { report, reports, fetchMock, deps, body } = setup();
 
     const res = await handleCreateLinearIssue({ user: presenter, reportId: report.id, body }, deps);
@@ -58,9 +58,9 @@ describe("POST /api/reports/:id/linear", () => {
     const input = sentInput(fetchMock);
     expect(input.teamId).toBe("team-uuid");
     expect(input.priority).toBe(2);
-    expect(input.description).toContain("- [ ] Export includes payroll for both US and Canada subsidiaries");
+    expect(input.description).toContain("- [ ] Pennsylvania local earned income tax has PSD codes");
     expect(input.description).toContain(`https://deeproot.example/reports/${report.id}`);
-    expect(input.description).not.toContain("Dana Whitfield"); // no email bodies sent to Linear
+    expect(input.description).not.toContain("Can you confirm who on your team"); // no email bodies sent to Linear
 
     expect((await reports.get(report.id))?.linearIssue?.identifier).toBe("DEE-1");
   });
@@ -141,7 +141,7 @@ describe("POST /api/reports/:id/linear", () => {
     const error = (res.body as ApiError).error;
     expect(error.code).toBe("INTEGRATION_UNAVAILABLE");
     expect(error.fallbackUrl).toMatch(/^https:\/\/linear\.app\/team\/DEE\/new\?title=/);
-    expect(new URL(error.fallbackUrl!).searchParams.get("description")).toContain("US and Canada subsidiaries");
+    expect(new URL(error.fallbackUrl!).searchParams.get("description")).toContain("Ohio withholding");
     expect((await reports.get(report.id))?.linearIssue).toBeUndefined();
   });
 

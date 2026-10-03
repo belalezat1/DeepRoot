@@ -1,70 +1,97 @@
-import { ACCOUNTS, ACME_MEETING_DATE, ACME_MEETING_TRANSCRIPT } from "@deeproot/demo";
+import { ACCOUNTS, NORTHSTAR_MEETING_DATE, NORTHSTAR_MEETING_TRANSCRIPT } from "@deeproot/demo";
 import type { TranscriptSegment } from "@deeproot/shared";
 import { describe, expect, it, vi } from "vitest";
-import { assertWav, formatTranscript, meetingToSource, transcribeMeeting } from "./meeting.js";
+import { m4a, wav } from "../testing/audio.js";
+import { assertWav, formatTranscript, meetingToSource, sniffAudioFormat, transcribeMeeting } from "./meeting.js";
 
-const acme = ACCOUNTS.find((a) => a.id === "acme")!;
-
-/** A minimal valid WAV header; the content does not matter to ingest. */
-function wav(): Uint8Array {
-  const bytes = new Uint8Array(44);
-  bytes.set(new TextEncoder().encode("RIFF"), 0);
-  bytes.set(new TextEncoder().encode("WAVE"), 8);
-  return bytes;
-}
+const northstar = ACCOUNTS.find((a) => a.id === "northstar")!;
+const ascii = (s: string) => new TextEncoder().encode(s);
 
 const segments: TranscriptSegment[] = [
-  { startMs: 0, endMs: 2000, speaker: "1", text: "Thanks for making time." },
-  { startMs: 2000, endMs: 4000, speaker: "1", text: "When can we have it?" },
-  { startMs: 4000, endMs: 6000, speaker: "2", text: "By Friday." },
+  { startMs: 0, endMs: 2000, speaker: "1", text: "Before we wrap up," },
+  { startMs: 2000, endMs: 4000, speaker: "1", text: "where are we on the launch?" },
+  { startMs: 4000, endMs: 6000, speaker: "2", text: "The open item is state tax setup." },
 ];
 
 describe("assertWav", () => {
-  it("accepts a RIFF/WAVE header", () => {
-    expect(() => assertWav(wav())).not.toThrow();
+  it("accepts a RIFF/WAVE file", () => {
+    expect(() => assertWav(wav(), "meeting.wav")).not.toThrow();
   });
 
-  it("rejects a Zoom m4a with conversion instructions", () => {
-    const m4a = new Uint8Array(44);
-    m4a.set(new TextEncoder().encode("ftypM4A "), 4);
-    expect(() => assertWav(m4a)).toThrow(/ffmpeg/);
+  it("names a Zoom m4a and says how to convert it", () => {
+    expect(() => assertWav(m4a(), "audio.m4a")).toThrow(/m4a\/mp4 audio.*ffmpeg -i <input> -ac 1 -ar 16000 meeting\.wav/);
+  });
+
+  it("rejects a WAV upload with the wrong extension", () => {
+    expect(() => assertWav(wav(), "audio.m4a")).toThrow(/Upload a \.wav file, not "audio\.m4a"/);
+  });
+
+  it("checks the bytes, not just the name: a renamed m4a is still rejected", () => {
+    expect(() => assertWav(m4a(), "meeting.wav")).toThrow(/m4a\/mp4/);
+  });
+
+  it("rejects empty and unrecognized files", () => {
+    expect(() => assertWav(new Uint8Array(0))).toThrow(/empty/);
+    expect(() => assertWav(ascii("hello, not audio"))).toThrow(/not a recognized audio file/);
+  });
+
+  it("recognizes other common formats", () => {
+    expect(sniffAudioFormat(ascii("ID3\u0004"))).toBe("mp3");
+    expect(sniffAudioFormat(ascii("OggS"))).toBe("ogg");
+    expect(sniffAudioFormat(ascii("fLaC"))).toBe("flac");
   });
 });
 
 describe("formatTranscript", () => {
-  it("merges consecutive lines from one speaker and applies names", () => {
-    expect(formatTranscript(segments, { "1": "Dana", "2": "Marcus" })).toBe(
-      "Dana: Thanks for making time. When can we have it?\nMarcus: By Friday.",
+  it("merges consecutive segments from one speaker and applies names", () => {
+    expect(formatTranscript(segments, { "1": "Maya", "2": "Sam" })).toBe(
+      "Maya: Before we wrap up, where are we on the launch?\nSam: The open item is state tax setup.",
     );
   });
 
   it("labels unnamed speakers instead of guessing", () => {
-    expect(formatTranscript(segments.slice(2))).toBe("Speaker 2: By Friday.");
+    expect(formatTranscript(segments.slice(2))).toBe("Speaker 2: The open item is state tax setup.");
+  });
+
+  it("handles segments with no diarization", () => {
+    expect(formatTranscript([{ startMs: 0, endMs: 1, text: " Hello. " }])).toBe("Hello.");
   });
 });
 
 describe("transcribeMeeting", () => {
-  it("returns the Speech transcript when it works", async () => {
+  it("returns the Speech transcript and its segments", async () => {
     const result = await transcribeMeeting({
       audio: wav(),
       transcribe: async () => segments,
-      speakerNames: { "1": "Dana", "2": "Marcus" },
-      fallbackTranscript: ACME_MEETING_TRANSCRIPT,
+      speakerNames: { "1": "Maya", "2": "Sam" },
+      fallbackTranscript: NORTHSTAR_MEETING_TRANSCRIPT,
     });
-    expect(result.origin).toBe("azure-speech");
-    expect(result.transcript).toContain("Marcus: By Friday.");
+    expect(result).toEqual({
+      transcript: "Maya: Before we wrap up, where are we on the launch?\nSam: The open item is state tax setup.",
+      segments,
+      origin: "azure-speech",
+    });
   });
 
-  it("uses the prepared transcript when Speech fails, and says so", async () => {
+  it("uses the prepared transcript when Speech throws, and marks it", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = await transcribeMeeting({
       audio: wav(),
       transcribe: async () => {
         throw new Error("Speech 503");
       },
-      fallbackTranscript: ACME_MEETING_TRANSCRIPT,
+      fallbackTranscript: NORTHSTAR_MEETING_TRANSCRIPT,
     });
-    expect(result).toEqual({ transcript: ACME_MEETING_TRANSCRIPT, segments: [], origin: "prepared-fallback" });
+    expect(result).toEqual({ transcript: NORTHSTAR_MEETING_TRANSCRIPT, segments: [], origin: "prepared-fallback" });
+  });
+
+  it("uses the prepared transcript when Speech returns only silence", async () => {
+    const result = await transcribeMeeting({
+      audio: wav(),
+      transcribe: async () => [{ startMs: 0, endMs: 1, speaker: "1", text: "   " }],
+      fallbackTranscript: NORTHSTAR_MEETING_TRANSCRIPT,
+    });
+    expect(result.origin).toBe("prepared-fallback");
   });
 
   it("fails clearly when Speech returns nothing and there is no fallback", async () => {
@@ -73,30 +100,46 @@ describe("transcribeMeeting", () => {
     });
   });
 
-  it("never sends a non-WAV upload to Speech", async () => {
+  it("never sends an unsupported upload to Speech, and never falls back for it", async () => {
     const transcribe = vi.fn(async () => segments);
-    await expect(transcribeMeeting({ audio: new Uint8Array(10), transcribe })).rejects.toMatchObject({
-      code: "BAD_REQUEST",
-    });
+    await expect(
+      transcribeMeeting({ audio: m4a(), transcribe, fallbackTranscript: NORTHSTAR_MEETING_TRANSCRIPT }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(transcribe).not.toHaveBeenCalled();
   });
 });
 
 describe("meetingToSource", () => {
-  it("makes the reviewed transcript a citable source owned by the account", () => {
+  const reviewed = NORTHSTAR_MEETING_TRANSCRIPT.replace("Almost", "Nearly"); // a presenter correction
+
+  it("makes the reviewed transcript the citable source, owned by the account", () => {
     const source = meetingToSource({
-      account: acme,
-      reportId: "rpt-1",
-      transcript: ACME_MEETING_TRANSCRIPT,
-      occurredAt: ACME_MEETING_DATE,
+      account: northstar,
+      meetingId: "rpt-1",
+      transcript: `${reviewed}\r\n\r\n`,
+      occurredAt: NORTHSTAR_MEETING_DATE,
     });
-    expect(source).toMatchObject({
-      id: "acme-meeting-rpt-1",
+    expect(source).toEqual({
+      id: "northstar-meeting-rpt-1",
+      accountId: "northstar",
       kind: "meeting",
-      accountId: "acme",
-      title: "Acme Corporation meeting",
-      allowedUserIds: acme.allowedUserIds,
+      title: "Northstar Logistics meeting",
+      author: "Meeting transcript",
+      occurredAt: "2026-10-02T15:00:00.000Z",
+      body: reviewed,
+      allowedUserIds: northstar.allowedUserIds,
     });
-    expect(source.body).toContain("ready for you by Friday");
+  });
+
+  it("gives a corrected transcript the same ID, so it replaces the earlier version", () => {
+    const input = { account: northstar, meetingId: "rpt-1", occurredAt: NORTHSTAR_MEETING_DATE };
+    const first = meetingToSource({ ...input, transcript: NORTHSTAR_MEETING_TRANSCRIPT });
+    expect(meetingToSource({ ...input, transcript: reviewed }).id).toBe(first.id);
+  });
+
+  it("rejects an empty transcript or an invalid date", () => {
+    const input = { account: northstar, meetingId: "m", occurredAt: NORTHSTAR_MEETING_DATE };
+    expect(() => meetingToSource({ ...input, transcript: " \n " })).toThrow(/empty/);
+    expect(() => meetingToSource({ ...input, transcript: "x", occurredAt: "Friday" })).toThrow(/valid date/);
   });
 });
