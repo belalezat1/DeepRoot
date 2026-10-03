@@ -37,6 +37,14 @@ Requires the Azure CLI signed in with `az login` (NJIT account) on the Azure for
 .\infra\write-local-settings.ps1
 ```
 
+Then load the demo data and check every service against the live resources (all from the repo root):
+
+```powershell
+npm run seed:azure -w api                        # accounts and sources into Cosmos DB and AI Search; safe to rerun
+npm run verify:azure -w api -- path\to\meeting.wav   # verification record; the WAV is optional
+npm run smoke:generate -w api                    # one plain and one structured model call
+```
+
 The setting names are listed in `api/.env.example`. Teammates without Azure access work against the stub adapters and don't need these values.
 
 ## Model provider

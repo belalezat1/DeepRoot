@@ -8,9 +8,12 @@
   },
   "scripts": {
     "linear:teams": "node --env-file=.env scripts/linear-teams.ts",
-    "smoke:generate": "tsx --env-file=.env scripts/smoke-generate.ts"
+    "smoke:generate": "tsx --env-file=.env scripts/smoke-generate.ts",
+    "seed:azure": "tsx --env-file=.env scripts/seed-azure.ts",
+    "verify:azure": "tsx --env-file=.env scripts/verify-azure.ts"
   },
   "dependencies": {
+    "@azure/cosmos": "^4.10.1",
     "@deeproot/demo": "*",
     "@deeproot/shared": "*"
   },

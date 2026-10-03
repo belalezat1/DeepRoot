@@ -6,3 +6,4 @@ export * from "./linear/client.js";
 export * from "./linear/format.js";
 export * from "./handlers/createLinearIssue.js";
 export * from "./handlers/transcribe.js";
+export * from "./adapters/index.js";

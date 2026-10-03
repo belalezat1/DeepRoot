@@ -14,29 +14,39 @@ export class AdapterError extends Error {
 
 const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
-type PostJsonOptions = {
+export type RequestOptions = {
   /** Per-attempt limit. Static Web Apps managed Functions stop long requests, so keep this well under a minute. */
   timeoutMs?: number;
   /** Extra attempts after a brief throttle or server error. Timeouts and exhausted quotas are not retried. */
   retries?: number;
 };
 
-export async function postJson(
+export function postJson(
   service: string,
   url: string,
   headers: Record<string, string>,
   body: unknown,
-  { timeoutMs = 25_000, retries = 2 }: PostJsonOptions = {},
+  options?: RequestOptions,
+): Promise<unknown> {
+  return requestJson(
+    service,
+    url,
+    { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) },
+    options,
+  );
+}
+
+/** Sends a request and parses a JSON reply. The body must be re-sendable (a string or FormData) for retries. */
+export async function requestJson(
+  service: string,
+  url: string,
+  init: RequestInit,
+  { timeoutMs = 25_000, retries = 2 }: RequestOptions = {},
 ): Promise<unknown> {
   for (let attempt = 0; ; attempt++) {
     let response: Response;
     try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json", ...headers },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
+      response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
     } catch (error) {
       const timedOut = error instanceof DOMException && error.name === "TimeoutError";
       if (!timedOut && attempt < retries) {
