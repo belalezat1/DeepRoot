@@ -6,7 +6,7 @@ All resources live in `rg-deeproot` on the NJIT Azure for Students subscription.
 
 | Resource | Name | Tier | Region |
 | --- | --- | --- | --- |
-| Google Gemini (not Azure) | `gemini-3.5-flash` through the Gemini API; the default model | Google AI Studio free tier, rate limited per model | — |
+| Google Gemini (not Azure) | `gemini-3.5-flash-lite` through the Gemini API; the default model, with a 12 s limit before Azure OpenAI answers | Google AI Studio free tier, rate limited per model | — |
 | Azure OpenAI | `deeproot-aoai-ya332`, deployment `chat` (gpt-4.1-mini, 50K TPM); answers when Gemini is rate limited or down | S0, pay per token, nothing when unused | East US 2 |
 | Speech | `deeproot-speech-ya332` | F0 (free, 5 audio hours/month) | East US 2 |
 | AI Search | `deeproot-search-ya332`, index `sources` | Free | West US 2 |

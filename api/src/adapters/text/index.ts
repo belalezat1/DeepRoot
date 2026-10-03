@@ -25,8 +25,9 @@ function createProvider(provider: string, env: NodeJS.ProcessEnv): TextGenerator
     case "gemini":
       return createGeminiTextGenerator({
         apiKey: required(env, "GEMINI_API_KEY"),
-        model: env.GEMINI_MODEL ?? "gemini-3.5-flash",
+        model: env.GEMINI_MODEL ?? "gemini-3.5-flash-lite",
         thinkingLevel: env.GEMINI_THINKING_LEVEL ?? "low",
+        timeoutMs: Number(env.GEMINI_TIMEOUT_MS) || 12_000,
       });
     case "azure":
       return createAzureOpenAiTextGenerator({

@@ -6,6 +6,7 @@ import type { TextGenerator } from "./types.js";
 export function createChatModel(generator: TextGenerator = createTextGenerator()): ChatModel {
   return {
     async complete(req) {
+      const start = Date.now();
       const result = await generator.generateText({
         messages: [
           { role: "system", content: req.system },
@@ -15,6 +16,8 @@ export function createChatModel(generator: TextGenerator = createTextGenerator()
         maxOutputTokens: req.maxTokens,
         responseSchema: { type: "object" },
       });
+      // Shows in the Functions log which model answered (Gemini, or the fallback).
+      console.info(`ChatModel answered by ${result.provider} ${result.model} in ${Date.now() - start} ms`);
       return result.text;
     },
   };

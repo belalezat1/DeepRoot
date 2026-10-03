@@ -28,6 +28,8 @@ export function createGeminiTextGenerator(config: {
   model: string;
   /** Gemini 3 reasoning depth: minimal, low, medium or high. Hidden reasoning adds latency and uses output tokens. */
   thinkingLevel?: string;
+  /** Per-attempt limit. Kept short so a slow free-tier moment hands over to the fallback quickly. */
+  timeoutMs?: number;
 }): TextGenerator {
   return {
     async generateText(request): Promise<GenerateTextResult> {
@@ -59,6 +61,7 @@ export function createGeminiTextGenerator(config: {
         `${GEMINI_BASE_URL}/models/${encodeURIComponent(config.model)}:generateContent`,
         { "x-goog-api-key": config.apiKey },
         body,
+        config.timeoutMs ? { timeoutMs: config.timeoutMs } : undefined,
       )) as GeminiResponse;
 
       const candidate = data.candidates?.[0];

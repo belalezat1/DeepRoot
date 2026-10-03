@@ -42,8 +42,11 @@ param modelProvider string = 'gemini'
 ])
 param modelFallback string = 'azure'
 
-@description('Free-tier limits are per model. On 2026-10-03 gemini-3.5-flash answered in about 2 s; gemini-3.8-flash took 8-25 s and hit 5 requests per minute. gemini-2.5-flash is closed to new keys.')
-param geminiModel string = 'gemini-3.5-flash'
+@description('Free-tier limits are per model. On 2026-10-03 the Northstar analysis took 3-4 s on gemini-3.5-flash-lite, 3-10 s with failures on gemini-3.5-flash, and 9-11 s on gemini-3.1-flash-lite.')
+param geminiModel string = 'gemini-3.5-flash-lite'
+
+@description('Milliseconds to wait for Gemini before the fallback answers.')
+param geminiTimeoutMs int = 12000
 
 @description('Gemini 3 reasoning depth. Some models reject minimal, so it is not offered.')
 @allowed([
@@ -130,6 +133,7 @@ module resources 'resources.bicep' = {
     modelFallback: modelFallback
     geminiModel: geminiModel
     geminiThinkingLevel: geminiThinkingLevel
+    geminiTimeoutMs: geminiTimeoutMs
     geminiApiKey: geminiApiKey
     linearApiKey: linearApiKey
     linearTeamId: linearTeamId

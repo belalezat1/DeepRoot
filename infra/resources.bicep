@@ -12,6 +12,7 @@ param modelProvider string
 param modelFallback string
 param geminiModel string
 param geminiThinkingLevel string
+param geminiTimeoutMs int
 
 @secure()
 param geminiApiKey string
@@ -171,6 +172,7 @@ resource staticWebAppSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
       MODEL_FALLBACK: modelFallback
       GEMINI_MODEL: geminiModel
       GEMINI_THINKING_LEVEL: geminiThinkingLevel
+      GEMINI_TIMEOUT_MS: string(geminiTimeoutMs)
       AZURE_OPENAI_ENDPOINT: openAi.properties.endpoint
       AZURE_OPENAI_API_KEY: openAi.listKeys().key1
       AZURE_OPENAI_DEPLOYMENT: chatDeployment.name
