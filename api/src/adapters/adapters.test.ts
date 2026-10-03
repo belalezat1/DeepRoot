@@ -147,6 +147,21 @@ describe("model fallback", () => {
       .generateText(request)).rejects.toThrow("not set");
   });
 
+  it("uses plain JSON mode for a bare object schema, which Gemini would satisfy with {}", async () => {
+    const reply = { status: 200, body: { candidates: [{ content: { parts: [{ text: "{}" }] }, finishReason: "STOP" }] } };
+    const fetchMock = stubFetch(reply, reply);
+    const gemini = createGeminiTextGenerator({ apiKey: "k", model: "m" });
+    const generationConfig = (call: number) => JSON.parse(fetchMock.mock.calls[call]![1].body as string).generationConfig;
+
+    await gemini.generateText({ ...request, responseSchema: { type: "object" } });
+    expect(generationConfig(0)).toMatchObject({ responseMimeType: "application/json" });
+    expect(generationConfig(0)).not.toHaveProperty("responseJsonSchema");
+
+    const schema = { type: "object", properties: { status: { type: "string" } } };
+    await gemini.generateText({ ...request, responseSchema: schema });
+    expect(generationConfig(1)).toMatchObject({ responseJsonSchema: schema });
+  });
+
   it("rejects a Gemini reply that was cut off instead of returning part of it", async () => {
     stubFetch({
       status: 200,

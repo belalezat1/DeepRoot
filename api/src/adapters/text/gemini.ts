@@ -12,6 +12,17 @@ type GeminiResponse = {
   modelVersion?: string;
 };
 
+/**
+ * Gemini enforces a response schema during generation, and `{}` satisfies a bare `{ type: "object" }`,
+ * which is what it returned in testing. A schema with no structure therefore means plain JSON mode.
+ */
+function jsonOutput(schema: Record<string, unknown>) {
+  const bareObject = schema.type === "object" && Object.keys(schema).length === 1;
+  return bareObject
+    ? { responseMimeType: "application/json" }
+    : { responseMimeType: "application/json", responseJsonSchema: schema };
+}
+
 export function createGeminiTextGenerator(config: {
   apiKey: string;
   model: string;
@@ -38,9 +49,7 @@ export function createGeminiTextGenerator(config: {
           temperature: request.temperature,
           maxOutputTokens: request.maxOutputTokens,
           ...(config.thinkingLevel ? { thinkingConfig: { thinkingLevel: config.thinkingLevel } } : {}),
-          ...(request.responseSchema
-            ? { responseMimeType: "application/json", responseJsonSchema: request.responseSchema }
-            : {}),
+          ...(request.responseSchema ? jsonOutput(request.responseSchema) : {}),
         },
       };
 

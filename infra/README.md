@@ -45,6 +45,25 @@ npm run verify:azure -w api -- path\to\meeting.wav   # verification record; the 
 npm run smoke:generate -w api                    # one plain and one structured model call
 ```
 
+## API (Azure Functions)
+
+`api/src/functions/app.ts` wraps the backend handlers as HTTP functions (v4 programming model, Node 22). The signed-in user comes only from Static Web Apps' `x-ms-client-principal` header (`userDetails`), which Static Web Apps sets itself and strips from browser requests. `GET /api/health` reports which backend each service uses.
+
+```powershell
+npm run build:functions -w api   # bundles everything into api/deploy (git-ignored)
+.\infra\deploy-app.ps1           # build, then deploy the API and web\dist (or a placeholder page) to the Static Web App
+```
+
+Run locally by loading `api/.env` into the environment and starting the host; settings files with keys are never copied into `api/deploy`:
+
+```powershell
+Get-Content api\.env | ? { $_ -match '^([A-Z0-9_]+)=(.*)$' } | % { [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2]) }
+$env:FUNCTIONS_WORKER_RUNTIME = 'node'
+npm run start:functions -w api   # http://localhost:7071/api/...
+```
+
+Locally there is no sign-in, so send the principal header yourself, e.g. `userDetails` set to `presenter`. `infra/staticwebapp.config.json` pins the API to Node 22.
+
 The setting names are listed in `api/.env.example`. Teammates without Azure access work against the stub adapters and don't need these values.
 
 ## Model provider

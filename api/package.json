@@ -10,15 +10,19 @@
     "linear:teams": "node --env-file=.env scripts/linear-teams.ts",
     "smoke:generate": "tsx --env-file=.env scripts/smoke-generate.ts",
     "verify:azure": "tsx --env-file=.env scripts/verify-azure.ts",
-    "seed": "tsx --env-file=.env src/scripts/seed.ts"
+    "seed": "tsx --env-file=.env src/scripts/seed.ts",
+    "build:functions": "node scripts/build-functions.mjs",
+    "start:functions": "npm run build:functions && func start --script-root deploy"
   },
   "dependencies": {
     "@azure/cosmos": "^4.10.1",
+    "@azure/functions": "^4.16.5",
     "@deeproot/demo": "*",
     "@deeproot/shared": "*"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.15"
   }
 }
