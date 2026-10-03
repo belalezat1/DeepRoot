@@ -1,5 +1,5 @@
 import type { Account, MeetingReport } from "@deeproot/shared";
-import type { AccountDirectory } from "../auth/access.js";
+import type { AccountDirectory } from "../access.js";
 
 /** Teammate 1 implements this with Cosmos DB; the in-memory version is for tests and local runs. */
 export interface ReportStore {

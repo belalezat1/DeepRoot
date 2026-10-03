@@ -10,9 +10,7 @@
     "linear:teams": "node --env-file=.env scripts/linear-teams.ts"
   },
   "dependencies": {
+    "@deeproot/demo": "*",
     "@deeproot/shared": "*"
-  },
-  "devDependencies": {
-    "@deeproot/demo": "*"
   }
 }

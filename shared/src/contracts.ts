@@ -3,7 +3,14 @@
 
 // ---------- Core records (from BUILD_PLAN) ----------
 
-export type SourceKind = "email" | "meeting";
+// "internal_app" added: records pulled from internal tools through a declarative connector.
+export type SourceKind = "email" | "meeting" | "internal_app";
+
+/** The internal tool a record came from, so the UI can label it ("Implementation Tracker"). */
+export type SourceApp = {
+  id: string;
+  name: string;
+};
 
 export type SourceRecord = {
   id: string;
@@ -14,6 +21,7 @@ export type SourceRecord = {
   occurredAt: string; // ISO 8601
   body: string;
   allowedUserIds: string[];
+  app?: SourceApp; // set only when kind is "internal_app"
 };
 
 /** A SourceRecord as sent to the browser: the access list stays on the server. */

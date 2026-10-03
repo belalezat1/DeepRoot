@@ -102,6 +102,47 @@ export const BETACO_EMAIL: SourceRecord = {
 /** Records seeded into Cosmos DB and AI Search for the live demo. */
 export const DEMO_SOURCES: SourceRecord[] = [ACME_CUSTOMER_EMAIL, ACME_INTERNAL_EMAIL, BETACO_EMAIL];
 
+// ---------- Internal app export (raw, before the connector normalizes it) ----------
+
+/**
+ * A raw export from a fictional internal "Implementation Tracker", shaped the way an in-house tool
+ * would actually emit it: its own field names, its own customer codes, nested objects.
+ * The connector in api/src/ingest/connectors/ maps it to SourceRecords; nothing here is pre-cleaned.
+ */
+export const IMPLEMENTATION_TRACKER_EXPORT: Array<Record<string, unknown>> = [
+  {
+    ticket_id: "IT-4471",
+    customer: { code: "C-1001", display: "Acme Corp" },
+    summary: "Payroll export: Acme Canada Ltd",
+    status: "Not started",
+    assignee: null,
+    updated_by: "Priya Raman",
+    updated_at: "2026-09-30T20:10:00Z",
+    notes: "Blocked on provincial tax field mapping and CAD currency support. No estimate yet.",
+  },
+  {
+    ticket_id: "IT-4502",
+    customer: { code: "C-2002", display: "BetaCo" },
+    summary: "BetaCo contractor payroll change",
+    status: "In progress",
+    assignee: "Lee Okafor",
+    updated_by: "Lee Okafor",
+    updated_at: "2026-09-29T10:00:00Z",
+    notes: `Reference ${BETACO_CANARY}. Apply the 18 percent contractor payroll reduction next quarter.`,
+  },
+  {
+    // A customer Deeproot has no account for: the connector must reject it, not guess.
+    ticket_id: "IT-4510",
+    customer: { code: "C-9999", display: "Gamma Ltd" },
+    summary: "Gamma onboarding",
+    status: "Not started",
+    assignee: null,
+    updated_by: "Ops Bot",
+    updated_at: "2026-09-30T08:00:00Z",
+    notes: "Kickoff pending.",
+  },
+];
+
 // ---------- Test-only records (not seeded) ----------
 
 /** An Acme email that tries to hijack the model. The app must treat it as data. */

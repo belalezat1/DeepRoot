@@ -1,5 +1,5 @@
 import type { CreateLinearIssueResponse, LinearIssueRef, TicketDraft, TicketPriority } from "@deeproot/shared";
-import { type AccountDirectory, type SignedInUser, authorizeAccount, notFound, requireUser } from "../auth/access.js";
+import { type AccountDirectory, type SignedInUser, authorizeAccount, notFound, requireUser } from "../access.js";
 import { ApiFailure, type HandlerResult, toErrorResult } from "../errors.js";
 import { type LinearConfig, createLinearIssue } from "../linear/client.js";
 import { buildFallbackUrl, buildIssueDescription } from "../linear/format.js";
