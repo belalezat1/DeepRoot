@@ -20,7 +20,7 @@ const backend = createBackend(
 | `SourceSearch` | [store/sources.ts](../api/src/store/sources.ts) | `search({ accountId, userId, query, top })` | `SourceRecord[]` | 503 INTEGRATION_UNAVAILABLE, model not called |
 | `SourceWriter` | [store/sources.ts](../api/src/store/sources.ts) | `save(source)` | `void` | 503 INTEGRATION_UNAVAILABLE |
 | `AnalysisStore` | [store/analyses.ts](../api/src/store/analyses.ts) | `save(analysis)`, `latest(accountId, userId)` | `void`, `AgentAnalysis \| null` | save: logged, analysis still returned. latest: 503 |
-| `ReportStore` | [store/reports.ts](../api/src/store/reports.ts) | `get(reportId)`, `save(report)` | `StoredReport | null`, `void` | generic 500 |
+| `ReportStore` | [store/reports.ts](../api/src/store/reports.ts) | `get(reportId)`, `save(report)` | `StoredReport \| null`, `void` | generic 500 |
 | `ChatModel` | [agent/model.ts](../api/src/agent/model.ts) | `complete({ system, user, maxTokens })` | reply text | 503 INTEGRATION_UNAVAILABLE |
 | `TranscribeAudio` | [ingest/meeting.ts](../api/src/ingest/meeting.ts) | `(audio: Uint8Array)` | `TranscriptSegment[]` | prepared transcript, else 502 TRANSCRIPTION_FAILED |
 
