@@ -33,12 +33,14 @@ app.http("transcribe", {
       return json(toErrorResult(new ApiFailure("BAD_REQUEST", "Send multipart/form-data with `accountId` and `audio`.")));
     }
     const audio = form.get("audio");
+    const preparedFallback = form.get("allowPreparedFallback");
     return json(
       await backend().transcribe({
         user: user(req),
         accountId: form.get("accountId"),
         audio: audio instanceof Blob ? new Uint8Array(await audio.arrayBuffer()) : audio,
         fileName: audio instanceof File && audio.name ? audio.name : undefined,
+        allowPreparedFallback: preparedFallback === null ? undefined : preparedFallback === "true" ? true : preparedFallback === "false" ? false : preparedFallback,
       }),
     );
   },
@@ -130,3 +132,18 @@ app.http("health", {
   authLevel: "anonymous",
   handler: async () => json({ status: 200, body: { ok: true, backends: getDeps().backends } }),
 });
+
+app.http("getSource", {
+  methods: ["GET"], route: "accounts/{id}/sources/{sourceId}", authLevel: "anonymous",
+  handler: async req => json(await backend().getSource({ user: user(req), accountId: req.params.id ?? "", sourceId: req.params.sourceId ?? "", reportId: req.query.get("reportId") ?? undefined, version: req.query.get("version") ?? undefined })),
+});
+
+app.http("integrations", { methods: ["GET"], route: "accounts/{id}/integrations", authLevel: "anonymous", handler: async req => json(await backend().integrations.list({ user: user(req), accountId: req.params.id ?? "" })) });
+app.http("syncIntegration", { methods: ["POST"], route: "accounts/{id}/integrations/{appId}/sync", authLevel: "anonymous", handler: async req => json(await backend().integrations.sync({ user: user(req), accountId: req.params.id ?? "", appId: req.params.appId ?? "" })) });
+app.http("demoRecords", { methods: ["GET"], route: "demo-apps/{appId}/accounts/{id}/records", authLevel: "anonymous", handler: async req => json(await backend().integrations.demoRecords({ user: user(req), accountId: req.params.id ?? "", appId: req.params.appId ?? "" })) });
+app.http("editDemoRecord", { methods: ["PATCH"], route: "demo-apps/{appId}/accounts/{id}/records/{recordId}", authLevel: "anonymous", handler: async req => json(await backend().integrations.edit({ user: user(req), accountId: req.params.id ?? "", appId: req.params.appId ?? "", recordId: req.params.recordId ?? "", body: await readJson(req) })) });
+app.http("resetDemoRecords", { methods: ["POST"], route: "demo-apps/{appId}/accounts/{id}/reset", authLevel: "anonymous", handler: async req => json(await backend().integrations.reset({ user: user(req), accountId: req.params.id ?? "", appId: req.params.appId ?? "" })) });
+app.http("exportDemoRecords", { methods: ["GET"], route: "demo-apps/{appId}/export", authLevel: "anonymous", handler: async req => json(await backend().integrations.export({ appId: req.params.appId ?? "", customerKey: req.query.get("customerKey") ?? "", token: req.headers.get("authorization")?.replace(/^Bearer /, "") ?? "" })) });
+
+app.http("createDemoRecord", { methods: ["POST"], route: "demo-apps/{appId}/accounts/{id}/records", authLevel: "anonymous", handler: async req => json(await backend().integrations.create({ user: user(req), accountId: req.params.id ?? "", appId: req.params.appId ?? "", body: await readJson(req) })) });
+app.http("deleteDemoRecord", { methods: ["DELETE"], route: "demo-apps/{appId}/accounts/{id}/records/{recordId}", authLevel: "anonymous", handler: async req => json(await backend().integrations.delete({ user: user(req), accountId: req.params.id ?? "", appId: req.params.appId ?? "", recordId: req.params.recordId ?? "", body: await readJson(req) })) });

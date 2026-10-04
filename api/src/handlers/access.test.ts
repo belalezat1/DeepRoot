@@ -19,7 +19,7 @@ const presenter = { userId: DEMO_USERS.presenter };
 const betacoLead = { userId: DEMO_USERS.betacoLead };
 
 function setup() {
-  const search = new InMemorySourceSearch(ALL_SOURCES);
+  const search = new InMemorySourceSearch([...ALL_SOURCES, { ...ALL_SOURCES.find(s => s.kind === "meeting" && s.accountId === "northstar")!, id: SAMPLE_NORTHSTAR_REPORT.commitments[0]!.citations[0]!.sourceId, body: NORTHSTAR_MEETING_TRANSCRIPT }]);
   const model = scriptedModel();
   const generateReport = vi.fn(sampleReportGenerator);
   const linearFetch = vi.fn();

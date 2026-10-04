@@ -1,0 +1,6 @@
+import type { MeetingReport } from './model';
+export function ReportComparison({ previous, current }: { previous: MeetingReport; current: MeetingReport }) {
+  const content = (r: MeetingReport) => [...r.decisions.map(d => `Decision: ${d.text}`), ...r.commitments.map(c => `Commitment: ${c.text} · ${c.owner ?? 'Unknown owner'} · ${c.dueDate ?? 'Unknown date'}`), ...r.risks.map(k => `Risk: ${k.text}`)];
+  const before = content(previous), after = content(current);
+  return <details className="surface report-comparison"><summary>Compare with previous report</summary><p>Previous reports and their reviewed Linear actions are preserved. Highlighted lines differ.</p><div className="comparison-columns">{[[previous, before, after, 'Previous'], [current, after, before, 'Current']].map(([report, items, other, label]) => <section key={String(label)}><h3>{String(label)}</h3><small>{new Date((report as MeetingReport).createdAt).toLocaleString()}</small><ul>{(items as string[]).map((line, i) => <li className={(other as string[]).includes(line) ? '' : 'comparison-change'} key={i}>{line}</li>)}</ul>{!(items as string[]).length && <p>No established decisions, commitments or risks.</p>}</section>)}</div></details>;
+}

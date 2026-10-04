@@ -1,16 +1,21 @@
-import type { CreateLinearIssueResponse, LinearIssueRef, TicketDraft, TicketPriority } from "@deeproot/shared";
+import { assertReportEvidence } from "../store/authorization.js";
+import type { SourceSearch } from "../store/sources.js";
+import { TICKET_PRIORITIES, type CreateLinearIssueResponse, type LinearIssueRef, type TicketDraft, type TicketPriority } from "@deeproot/shared";
 import { type AccountDirectory, type SignedInUser, authorizeAccount, notFound, requireUser } from "../access.js";
 import { ApiFailure, type HandlerResult, toErrorResult } from "../errors.js";
-import { type LinearConfig, createLinearIssue } from "../linear/client.js";
+import { type LinearConfig, createLinearIssue, findLinearIssue } from "../linear/client.js";
 import { buildFallbackUrl, buildIssueDescription } from "../linear/format.js";
 import type { ReportStore } from "../store/reports.js";
+import { assertDeliveryContent, containsPersonalPayroll } from "../dataPolicy.js";
 
 export type CreateLinearIssueDeps = {
+  search?: SourceSearch;
   reports: ReportStore;
   accounts: AccountDirectory;
   /** null when LINEAR_API_KEY / LINEAR_TEAM_ID are not configured: the handler returns the fallback link. */
   linear: LinearConfig | null;
   appBaseUrl: string;
+  pendingCreations?: Map<string, Promise<LinearIssueRef>>;
 };
 
 export type CreateLinearIssueInput = {
@@ -19,11 +24,8 @@ export type CreateLinearIssueInput = {
   body: unknown;
 };
 
-/**
- * Creations in progress or finished, per report, in this process. A double click awaits the same
- * creation instead of starting a second one. The saved `linearIssue` on the report covers later retries.
- */
-const creations = new Map<string, Promise<LinearIssueRef>>();
+// Only an optimization: durable reservations and the remote UUID provide coordination across instances.
+const pendingByStore = new WeakMap<ReportStore, Map<string, Promise<LinearIssueRef>>>();
 
 /** POST /api/reports/:id/linear: create one Linear issue from the reviewed ticket. */
 export async function handleCreateLinearIssue(
@@ -36,49 +38,70 @@ export async function handleCreateLinearIssue(
 
     const report = await deps.reports.get(input.reportId);
     if (!report) throw notFound();
-    await authorizeAccount(user, report.accountId, deps.accounts);
+    const account = await authorizeAccount(user, report.accountId, deps.accounts);
+    await assertReportEvidence(report, account, user.userId, deps.search);
+    if (report.ticketStatus === "none") throw new ApiFailure("BAD_REQUEST", "No actionable task was established in this report.");
+    assertDeliveryContent(JSON.stringify(ticket));
+    if (containsPersonalPayroll(JSON.stringify(report))) throw notFound();
 
     if (report.linearIssue) {
       return { status: 200, body: { issue: report.linearIssue, alreadyCreated: true } };
     }
 
-    const reportUrl = `${deps.appBaseUrl.replace(/\/$/, "")}/reports/${encodeURIComponent(report.id)}`;
-    const fallbackUrl = buildFallbackUrl(ticket, reportUrl, deps.linear?.teamKey);
+    const reportUrl = `${deps.appBaseUrl.replace(/\/$/, "")}/?report=${encodeURIComponent(report.id)}`;
     const linear = deps.linear;
     if (!linear) {
-      throw new ApiFailure("INTEGRATION_UNAVAILABLE", "Linear is not configured. Use the prefilled link instead.", fallbackUrl);
+      // A pending attempt may already have created an issue, even if configuration was later removed.
+      if (report.linearCreation) throw new ApiFailure("INTEGRATION_UNAVAILABLE", "Restore Linear configuration to reconcile the pending issue.");
+      throw new ApiFailure("INTEGRATION_UNAVAILABLE", "Linear is not configured. Use the prefilled link instead.",
+        buildFallbackUrl(ticket, reportUrl));
     }
 
-    let creation = creations.get(report.id);
-    const alreadyCreated = creation !== undefined;
+    const reservation = await deps.reports.reserveLinearCreation(report.id, {
+      issueId: crypto.randomUUID(), teamId: linear.teamId, ticket,
+      description: buildIssueDescription(ticket, reportUrl),
+    });
+    if (reservation.report.linearIssue) return { status: 200, body: { issue: reservation.report.linearIssue, alreadyCreated: true } };
+    const accepted = reservation.report.linearCreation!;
+    if (accepted.teamId !== linear.teamId) throw new ApiFailure("INTEGRATION_UNAVAILABLE", "Restore the original Linear team to reconcile the pending issue.");
+
+    let pending = deps.pendingCreations ?? pendingByStore.get(deps.reports);
+    if (!pending) { pending = new Map(); pendingByStore.set(deps.reports, pending); }
+    let creation = pending.get(report.id);
     if (!creation) {
       creation = (async (): Promise<LinearIssueRef> => {
-        const created = await createLinearIssue(linear, {
-          title: ticket.title,
-          description: buildIssueDescription(ticket, reportUrl),
-          priority: ticket.priority,
-        });
+        let created = reservation.reserved ? null : await findLinearIssue(linear, accepted.issueId);
+        if (!created) {
+          try {
+            created = await createLinearIssue(linear, {
+              id: accepted.issueId, title: accepted.ticket.title,
+              description: accepted.description, priority: accepted.ticket.priority,
+            });
+          } catch (err) {
+            // A timeout or UUID conflict may mean creation succeeded elsewhere. Never allocate a new ID.
+            created = await findLinearIssue(linear, accepted.issueId);
+            if (!created) throw err;
+          }
+        }
         const issue = { identifier: created.identifier, url: created.url };
-        await deps.reports.save({ ...report, ticketDraft: ticket, linearIssue: issue });
+        await deps.reports.completeLinearCreation(report.id, issue);
         return issue;
       })();
-      creations.set(report.id, creation);
+      pending.set(report.id, creation);
     }
-
     try {
       const issue = await creation;
-      return { status: alreadyCreated ? 200 : 201, body: { issue, alreadyCreated } };
+      return { status: reservation.reserved ? 201 : 200, body: { issue, alreadyCreated: !reservation.reserved } };
     } catch (err) {
-      if (creations.get(report.id) === creation) creations.delete(report.id); // allow a retry
-      console.error("Linear issue creation failed", err);
-      throw new ApiFailure("INTEGRATION_UNAVAILABLE", "Linear is unavailable. Use the prefilled link instead.", fallbackUrl);
+      console.error("Linear issue reconciliation failed", err);
+      throw new ApiFailure("INTEGRATION_UNAVAILABLE", "The issue outcome is pending. Retry to reconcile the original reviewed draft; do not create another issue manually.");
+    } finally {
+      if (pending.get(report.id) === creation) pending.delete(report.id);
     }
   } catch (err) {
     return toErrorResult(err);
   }
 }
-
-const PRIORITIES: TicketPriority[] = ["low", "medium", "high"];
 
 function parseTicket(body: unknown): TicketDraft {
   const ticket = (body as { ticket?: unknown } | null)?.ticket as Partial<TicketDraft> | undefined;
@@ -92,7 +115,7 @@ function parseTicket(body: unknown): TicketDraft {
   }
   const acceptanceCriteria = criteria.map((c) => c.trim()).filter(Boolean);
   if (acceptanceCriteria.length === 0) throw new ApiFailure("BAD_REQUEST", "Add at least one acceptance criterion.");
-  if (!PRIORITIES.includes(ticket?.priority as TicketPriority)) {
+  if (!TICKET_PRIORITIES.includes(ticket?.priority as TicketPriority)) {
     throw new ApiFailure("BAD_REQUEST", "Priority must be low, medium, or high.");
   }
   return { title, description, acceptanceCriteria, priority: ticket!.priority as TicketPriority };

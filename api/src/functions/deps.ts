@@ -1,8 +1,8 @@
+import { integrationConfig } from "../integrations/config.js";
 import { createAdapters } from "../adapters/index.js";
 import { type Backend, createBackend } from "../backend.js";
 import type { LinearConfig } from "../linear/client.js";
-import { sampleReportGenerator } from "../reports/generator.js";
-import { InMemoryAnalysisStore } from "../store/analyses.js";
+import { sourceConfig } from "./sourceConfig.js";
 
 export type FunctionDeps = {
   backend: Backend;
@@ -12,8 +12,7 @@ export type FunctionDeps = {
 let deps: FunctionDeps | undefined;
 
 /**
- * The backend with Teammate 1's adapters plugged in, built once per process on first use. The Linear
- * handler's double-click protection lives in this process, so it must not be rebuilt per request.
+ * Adapter connections and backend dependencies, built once per process on first use.
  */
 export function getDeps(env: NodeJS.ProcessEnv = process.env): FunctionDeps {
   if (deps) return deps;
@@ -23,20 +22,23 @@ export function getDeps(env: NodeJS.ProcessEnv = process.env): FunctionDeps {
   const backend = createBackend(
     {
       accounts: adapters.accounts,
+      integrationStore: adapters.integrationStore,
       // createBackend takes search and writes as one object; the adapters provide them separately.
       sources: {
         search: (req) => adapters.search.search(req),
+        get: (accountId, id) => adapters.search.get!(accountId, id),
         save: (source) => adapters.sourceWriter.save(source),
+        remove: (accountId, id) => adapters.sourceWriter.remove!(accountId, id),
       },
       // No Cosmos container for analyses yet, so they live in this process (lost on restart).
-      analyses: new InMemoryAnalysisStore(),
+      analyses: adapters.analyses,
       reports: adapters.reports,
       model: adapters.chatModel,
       transcribeAudio: adapters.transcribeAudio,
     },
     {
-      // Teammate 3's AI workflow replaces sampleReportGenerator.
-      generateReport: sampleReportGenerator,
+      ...sourceConfig(env),
+      integrationConfig: integrationConfig(env),
       linear,
       appBaseUrl: env.APP_BASE_URL ?? "",
     },
@@ -46,7 +48,7 @@ export function getDeps(env: NodeJS.ProcessEnv = process.env): FunctionDeps {
     backend,
     backends: {
       ...adapters.backends,
-      analyses: "memory",
+      analyses: adapters.backends.storage === "cosmos" ? "cosmos" : "memory",
       linear: linear ? "linear" : "fallback-link",
       auth: env.DEMO_USER_ID ? `demo mode, everyone is ${env.DEMO_USER_ID}` : "sign-in",
     },

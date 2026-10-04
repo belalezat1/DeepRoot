@@ -12,7 +12,11 @@
     "verify:azure": "tsx --env-file=.env scripts/verify-azure.ts",
     "seed": "tsx --env-file=.env src/scripts/seed.ts",
     "build:functions": "node scripts/build-functions.mjs",
-    "start:functions": "npm run build:functions && func start --script-root deploy"
+    "start:functions": "npm run build:functions && func start --script-root deploy",
+    "verify:workflow": "tsx --env-file=.env scripts/verify-workflow.ts",
+    "configure:local": "node scripts/configure-local-demo.mjs",
+    "verify:local": "node scripts/verify-local.mjs",
+    "start:local": "npm run build:functions && node scripts/start-local.mjs"
   },
   "dependencies": {
     "@azure/cosmos": "^4.10.1",

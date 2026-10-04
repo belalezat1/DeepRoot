@@ -12,6 +12,7 @@ export interface ChatModel {
 }
 
 export type ChatModelRequest = {
+  signal?: AbortSignal;
   system: string;
   user: string; // contains the account's records as JSON: never log it in full
   maxTokens: number;

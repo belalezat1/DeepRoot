@@ -1,5 +1,6 @@
 import { ACCOUNTS, NORTHSTAR_CUSTOMER_EMAIL, NORTHSTAR_INTERNAL_EMAIL, NORTHSTAR_KICKOFF, NORTHSTAR_MEETING_DATE, NORTHSTAR_MEETING_TRANSCRIPT, SAMPLE_NORTHSTAR_REPORT, SAMPLE_SOURCE_IDS } from '@deeproot/demo';
 import type { AccountBriefResponse, ChatResponse, ClaimCheckResponse, MeetingReport, PublicSource } from '@deeproot/shared';
+import { assistantBoundary, assistantRefusalMessage } from '@deeproot/shared';
 
 export const ACCOUNT_ID = 'northstar';
 export const DEMO_TRANSCRIPT = NORTHSTAR_MEETING_TRANSCRIPT;
@@ -52,6 +53,8 @@ export function reportSources(transcript: string): PublicSource[] {
 }
 
 export function answerDemoQuestion(question: string): ChatResponse {
+  const boundary = assistantBoundary(question);
+  if (boundary) return { answer: assistantRefusalMessage(boundary), responseType: boundary, citations: [], sources: [], grounded: false };
   if (/betaco|beta co|other client|restricted/i.test(question)) {
     return { answer: 'I cannot answer that from this account workspace.', citations: [], sources: [], grounded: false };
   }
@@ -62,11 +65,13 @@ export function answerDemoQuestion(question: string): ChatResponse {
 }
 
 export function checkDemoClaim(statement: string): ClaimCheckResponse {
+  const boundary = assistantBoundary(statement);
+  if (boundary) return { verdict: 'uncertain', explanation: assistantRefusalMessage(boundary), refusalReason: boundary, citations: [], sources: [], suggestedRewrite: '' };
   if (/complete|ready|on track|no risk|will launch/i.test(statement)) {
     return { verdict: 'contradicted', explanation: 'State tax setup remains incomplete, and the internal email says the October 15 launch is at risk.', citations: [{ sourceId: S.internalEmail, quote: "If the Ohio account number doesn't arrive by October 8, the October 15 payroll launch is at risk." }], sources: [emailSources[0]], suggestedRewrite: 'State tax setup remains incomplete. We are waiting on the Ohio withholding account number and will confirm the October 15 payroll timing.' };
   }
   if (/38 employees|ohio and pennsylvania/i.test(statement)) {
     return { verdict: 'supported', explanation: 'Maya’s email confirms the affected employees and states.', citations: [{ sourceId: S.customerEmail, quote: "38 employees in Ohio and Pennsylvania still don't have state tax setup in the new system." }], sources: [emailSources[1]], suggestedRewrite: statement.trim() };
   }
-  return { verdict: 'uncertain', explanation: 'The available Northstar sources do not establish this statement clearly.', citations: [], sources: [], suggestedRewrite: 'We will confirm this detail and follow up with Northstar.' };
+  return { verdict: 'uncertain', explanation: 'The available Northstar sources do not establish this statement clearly.', citations: [], sources: [], suggestedRewrite: '' };
 }

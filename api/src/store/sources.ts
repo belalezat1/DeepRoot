@@ -6,6 +6,7 @@ export type SourceSearchRequest = {
   /** Free-text terms. Empty means "the account's most recent sources". */
   query: string;
   top: number;
+  signal?: AbortSignal;
 };
 
 /**
@@ -23,6 +24,8 @@ export type SourceSearchRequest = {
  */
 export interface SourceSearch {
   search(req: SourceSearchRequest): Promise<SourceRecord[]>;
+  /** Authoritative point read. Configured adapters always implement this; optional for legacy test adapters. */
+  get?(accountId: string, sourceId: string): Promise<SourceRecord | null>;
 }
 
 /**
@@ -33,6 +36,14 @@ export interface SourceSearch {
  */
 export interface SourceWriter {
   save(source: SourceRecord): Promise<void>;
+  remove?(accountId: string, sourceId: string): Promise<void>;
+}
+
+/** Older exports cannot replace newer content or restore access revoked by either version. */
+export function sourceForUpdate(incoming: SourceRecord, current?: SourceRecord | null): SourceRecord {
+  if (incoming.kind !== "internal_app" || !current || current.occurredAt <= incoming.occurredAt) return incoming;
+  return { ...current, allowedUserIds: current.allowedUserIds.filter(id => incoming.allowedUserIds.includes(id)),
+    ...(incoming.policy?.classification === "restricted_payroll" ? { policy: incoming.policy } : {}) };
 }
 
 const words = (text: string) => text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
@@ -56,7 +67,15 @@ export class InMemorySourceSearch implements SourceSearch, SourceWriter {
       .map(({ s }) => structuredClone(s));
   }
 
+  async get(accountId: string, sourceId: string): Promise<SourceRecord | null> {
+    const source = this.sources.get(sourceId);
+    return source?.accountId === accountId ? structuredClone(source) : null;
+  }
+
+  async remove(accountId: string, sourceId: string): Promise<void> { if (this.sources.get(sourceId)?.accountId === accountId) this.sources.delete(sourceId); }
+
   async save(source: SourceRecord): Promise<void> {
-    this.sources.set(source.id, structuredClone(source));
+    const current = this.sources.get(source.id);
+    this.sources.set(source.id, structuredClone(sourceForUpdate(source, current)));
   }
 }

@@ -33,7 +33,7 @@ describe("POST /api/meetings/transcribe", () => {
 
   it("marks the prepared fallback when Speech is down", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const result = await handleTranscribe(request, deps({ transcribeAudio: failingSpeech() }));
+    const result = await handleTranscribe({ ...request, allowPreparedFallback: true }, deps({ transcribeAudio: failingSpeech() }));
     expect(result.body).toMatchObject({ origin: "prepared-fallback", transcript: NORTHSTAR_MEETING_TRANSCRIPT });
   });
 

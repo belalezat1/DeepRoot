@@ -61,7 +61,7 @@ export function createGeminiTextGenerator(config: {
         `${GEMINI_BASE_URL}/models/${encodeURIComponent(config.model)}:generateContent`,
         { "x-goog-api-key": config.apiKey },
         body,
-        config.timeoutMs ? { timeoutMs: config.timeoutMs } : undefined,
+        { timeoutMs: config.timeoutMs ?? 12_000, signal: request.signal },
       )) as GeminiResponse;
 
       const candidate = data.candidates?.[0];

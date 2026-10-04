@@ -1,5 +1,5 @@
-import type { Citation, Commitment, Risk, TicketDraft, TicketPriority } from "@deeproot/shared";
-import { type CitationScope, validateCitation } from "../agent/citations.js";
+import { TICKET_PRIORITIES, type Citation, type Commitment, type Risk, type TicketDraft, type TicketPriority } from "@deeproot/shared";
+import { type CitationScope, ownerIsCited, validateCitations } from "../agent/citations.js";
 import { dateIsCited } from "../agent/findings.js";
 import { ApiFailure } from "../errors.js";
 import type { ReportDraft } from "./generator.js";
@@ -10,7 +10,6 @@ export type SanitizeResult = {
   dropped: { citations: number; items: number; owners: number; dueDates: number };
 };
 
-const PRIORITIES: TicketPriority[] = ["low", "medium", "high"];
 const MAX_TEXT = 2000;
 
 /**
@@ -26,13 +25,9 @@ export function sanitizeReportDraft(raw: unknown, scope: CitationScope): Sanitiz
   if (!r || typeof r !== "object") invalid("Report is not an object.");
 
   const cite = (list: unknown): Citation[] => {
-    const kept: Citation[] = [];
-    for (const rc of Array.isArray(list) ? list : []) {
-      const c = validateCitation(rc, scope);
-      if (!c) dropped.citations++;
-      else if (!kept.some((k) => k.sourceId === c.sourceId && k.startOffset === c.startOffset)) kept.push(c);
-    }
-    return kept;
+    const result = validateCitations(list, scope);
+    dropped.citations += result.dropped;
+    return result.citations;
   };
 
   const decisions = asArray(r.decisions, "decisions").flatMap((d) => {
@@ -49,7 +44,7 @@ export function sanitizeReportDraft(raw: unknown, scope: CitationScope): Sanitiz
     if (!text || citations.length === 0) return dropItem(dropped);
 
     let owner = optionalText(raw.owner);
-    if (owner && !citations.some((c) => c.quote.toLowerCase().includes(owner!.toLowerCase()))) {
+    if (owner && !ownerIsCited(owner, citations)) {
       owner = null;
       dropped.owners++;
     }
@@ -72,12 +67,16 @@ export function sanitizeReportDraft(raw: unknown, scope: CitationScope): Sanitiz
   return {
     draft: {
       summary: requiredText(r.summary, "summary"),
+      ...(r.summaryCitations ? { summaryCitations: cite(r.summaryCitations) } : {}),
+      ...(r.followUpCitations ? { followUpCitations: cite(r.followUpCitations) } : {}),
+      ...(r.ticketCitations ? { ticketCitations: cite(r.ticketCitations) } : {}),
       decisions,
       commitments,
       risks,
       openQuestions: asArray(r.openQuestions ?? [], "openQuestions").map(optionalText).filter((q): q is string => !!q),
       suggestedFollowUp: optionalText(r.suggestedFollowUp) ?? "",
-      ticketDraft: parseTicketDraft(r.ticketDraft),
+      ...(r.ticketStatus === "none" || r.ticketStatus === "proposed" ? { ticketStatus: r.ticketStatus } : {}),
+      ticketDraft: r.ticketStatus === "none" ? { title: "", description: "", acceptanceCriteria: [], priority: "medium" } : parseTicketDraft(r.ticketDraft),
     },
     dropped,
   };
@@ -90,7 +89,7 @@ function parseTicketDraft(raw: unknown): TicketDraft {
     .map(optionalText)
     .filter((c): c is string => !!c);
   if (acceptanceCriteria.length === 0) invalid("ticketDraft has no acceptance criteria.");
-  const priority = PRIORITIES.includes(t.priority as TicketPriority) ? (t.priority as TicketPriority) : "medium";
+  const priority = TICKET_PRIORITIES.includes(t.priority as TicketPriority) ? (t.priority as TicketPriority) : "medium";
   return {
     title: requiredText(t.title, "ticketDraft.title"),
     description: optionalText(t.description) ?? "",

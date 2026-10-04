@@ -16,6 +16,7 @@ const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
 export type RequestOptions = {
   /** Per-attempt limit. Static Web Apps managed Functions stop long requests, so keep this well under a minute. */
+  signal?: AbortSignal;
   timeoutMs?: number;
   /** Extra attempts after a brief throttle or server error. Timeouts and exhausted quotas are not retried. */
   retries?: number;
@@ -41,16 +42,18 @@ export async function requestJson(
   service: string,
   url: string,
   init: RequestInit,
-  { timeoutMs = 25_000, retries = 2 }: RequestOptions = {},
+  { timeoutMs = 25_000, retries = 2, signal }: RequestOptions = {},
 ): Promise<unknown> {
   for (let attempt = 0; ; attempt++) {
+    signal?.throwIfAborted();
     let response: Response;
     try {
-      response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+      response = await fetch(url, { ...init, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) });
     } catch (error) {
+      signal?.throwIfAborted();
       const timedOut = error instanceof DOMException && error.name === "TimeoutError";
       if (!timedOut && attempt < retries) {
-        await backoff(attempt);
+        await backoff(attempt, undefined, signal);
         continue;
       }
       const reason = timedOut ? `timed out after ${timeoutMs} ms` : "request failed";
@@ -63,7 +66,7 @@ export async function requestJson(
     // A 429 without a short Retry-After usually means a quota window, so fail fast and let a fallback answer.
     const quotaExhausted = response.status === 429 && !(Number(retryAfter) > 0 && Number(retryAfter) <= 5);
     if (RETRYABLE_STATUSES.has(response.status) && !quotaExhausted && attempt < retries) {
-      await backoff(attempt, retryAfter);
+      await backoff(attempt, retryAfter, signal);
       continue;
     }
     const detail = (await response.text()).slice(0, 500);
@@ -71,8 +74,13 @@ export async function requestJson(
   }
 }
 
-function backoff(attempt: number, retryAfter?: string | null): Promise<void> {
+function backoff(attempt: number, retryAfter?: string | null, signal?: AbortSignal): Promise<void> {
   const requested = Number(retryAfter) * 1000;
   const ms = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 5_000) : 1_000 * 2 ** attempt;
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
+    const stop = () => { clearTimeout(timer); reject(signal?.reason); };
+    const timer = setTimeout(() => { signal?.removeEventListener("abort", stop); resolve(); }, ms);
+    signal?.addEventListener("abort", stop, { once: true });
+  });
 }

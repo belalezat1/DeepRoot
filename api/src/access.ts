@@ -1,5 +1,6 @@
 import type { Account, SourceRecord } from "@deeproot/shared";
 import { ApiFailure } from "./errors.js";
+import { accountTeamSources } from "./dataPolicy.js";
 
 /** The signed-in user, taken from the Static Web Apps auth header (never from the request body). */
 export type SignedInUser = { userId: string };
@@ -44,5 +45,5 @@ export function filterPermittedSources(
   accountId: string,
   userId: string,
 ): SourceRecord[] {
-  return sources.filter((s) => s.accountId === accountId && s.allowedUserIds.includes(userId));
+  return accountTeamSources(sources.filter((s) => s.accountId === accountId && s.allowedUserIds.includes(userId)));
 }

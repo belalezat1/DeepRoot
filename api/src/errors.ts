@@ -36,6 +36,7 @@ export class ApiFailure extends Error {
 /** Turns anything a handler throws into the shared error shape; unexpected errors become a generic 500. */
 export function toErrorResult(err: unknown): HandlerResult<never> {
   if (err instanceof ApiFailure) return { status: err.status, body: err.toBody() };
+  if (err instanceof DOMException && ["AbortError", "TimeoutError"].includes(err.name)) return toErrorResult(new ApiFailure("INTEGRATION_UNAVAILABLE", "The evidence check timed out. Please retry."));
   console.error("Unexpected handler error", err);
   return {
     status: 500,

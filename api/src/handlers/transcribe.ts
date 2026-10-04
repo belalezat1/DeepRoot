@@ -2,6 +2,7 @@ import type { TranscribeResponse } from "@deeproot/shared";
 import { type AccountDirectory, type SignedInUser, authorizeAccount, requireUser } from "../access.js";
 import { ApiFailure, type HandlerResult, toErrorResult } from "../errors.js";
 import { transcribeMeeting, type TranscribeAudio } from "../ingest/meeting.js";
+import { assertDeliveryContent } from "../dataPolicy.js";
 
 /**
  * What the Azure Functions wrapper passes in after parsing multipart/form-data. `user` comes from
@@ -12,6 +13,8 @@ export type TranscribeRequest = {
   accountId: unknown;
   audio: unknown; // the uploaded file's bytes (a Node Buffer is a Uint8Array)
   fileName?: unknown;
+  /** Demo fallback must be explicitly requested; an uploaded meeting is otherwise never replaced. */
+  allowPreparedFallback?: unknown;
 };
 
 export type TranscribeDeps = {
@@ -37,6 +40,9 @@ export async function handleTranscribe(
     if (req.fileName !== undefined && typeof req.fileName !== "string") {
       throw new ApiFailure("BAD_REQUEST", "fileName must be a string.");
     }
+    if (req.allowPreparedFallback !== undefined && typeof req.allowPreparedFallback !== "boolean") {
+      throw new ApiFailure("BAD_REQUEST", "allowPreparedFallback must be a boolean.");
+    }
 
     const account = await authorizeAccount(user, req.accountId, deps.accounts);
 
@@ -45,8 +51,9 @@ export async function handleTranscribe(
       fileName: req.fileName,
       transcribe: deps.transcribeAudio,
       speakerNames: deps.speakerNames?.[account.id],
-      fallbackTranscript: deps.fallbackTranscripts?.[account.id],
+      fallbackTranscript: req.allowPreparedFallback === true ? deps.fallbackTranscripts?.[account.id] : undefined,
     });
+    assertDeliveryContent(body.transcript);
     return { status: 200, body };
   } catch (err) {
     return toErrorResult(err);

@@ -1,11 +1,10 @@
 // Shared plumbing for chat and claim checking: permitted retrieval, safe model calls, citation checks.
-import type { Account, Citation, PublicSource, SourceRecord } from "@deeproot/shared";
+import type { Account, Citation, SourceRecord } from "@deeproot/shared";
 import { assertContextIsolated } from "../agent/analyze.js";
-import { type CitationScope, validateCitation } from "../agent/citations.js";
-import type { ChatModel } from "../agent/model.js";
+import { type CitationScope, validateCitations } from "../agent/citations.js";
 import { promptRecord } from "../agent/prompt.js";
-import { ApiFailure } from "../errors.js";
 import type { SourceSearch } from "../store/sources.js";
+import { accountTeamSources } from "../dataPolicy.js";
 
 export const MAX_QA_SOURCES = 20;
 
@@ -30,7 +29,7 @@ export async function gatherContext(
   for (const s of [...extra, ...matched, ...recent]) if (!byId.has(s.id)) byId.set(s.id, s);
   const sources = [...byId.values()].slice(0, MAX_QA_SOURCES);
   assertContextIsolated(sources, account, userId);
-  return sources;
+  return accountTeamSources(sources);
 }
 
 /** Records as the model sees them: JSON-encoded so no record text can pose as an instruction. */
@@ -38,58 +37,12 @@ export function recordsBlock(sources: SourceRecord[]): string {
   return JSON.stringify({ records: sources.map(promptRecord) }, null, 1);
 }
 
-/** One JSON model call with a single retry if the reply is not a JSON object. */
-export async function callJsonModel(
-  model: ChatModel,
-  system: string,
-  user: string,
-  maxTokens: number,
-): Promise<Record<string, unknown>> {
-  for (const prompt of [user, `${user}\n\nYour previous reply was not a valid JSON object. Reply again with only the JSON object.`]) {
-    let text: string;
-    try {
-      text = await model.complete({ system, user: prompt, maxTokens });
-    } catch (err) {
-      console.error("Model call failed", err);
-      throw new ApiFailure("INTEGRATION_UNAVAILABLE", "The AI model is unavailable right now. Please try again.");
-    }
-    const parsed = parseJsonObject(text);
-    if (parsed) return parsed;
-  }
-  throw new ApiFailure("INVALID_MODEL_OUTPUT", "The AI model returned an unreadable answer. Please try again.");
-}
-
-function parseJsonObject(text: string): Record<string, unknown> | null {
-  const unfenced = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  try {
-    const json: unknown = JSON.parse(unfenced);
-    return json && typeof json === "object" && !Array.isArray(json) ? (json as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
+export { callJsonModel } from "../agent/json.js";
+export { publicSourcesFor, toPublicSource } from "../store/publicSources.js";
 
 /** Keeps only citations that pass the shared check, without duplicates. */
 export function checkCitations(raw: unknown, scope: CitationScope): Citation[] {
-  const kept: Citation[] = [];
-  for (const rc of Array.isArray(raw) ? raw : []) {
-    const c = validateCitation(rc, scope);
-    if (c && !kept.some((k) => k.sourceId === c.sourceId && k.startOffset === c.startOffset)) kept.push(c);
-  }
-  return kept;
-}
-
-/** The cited sources without access lists, so the UI can show excerpts. */
-export function publicSourcesFor(citations: Citation[], sourcesById: Map<string, SourceRecord>): PublicSource[] {
-  return [...new Set(citations.map((c) => c.sourceId))].flatMap((id) => {
-    const source = sourcesById.get(id);
-    return source ? [toPublicSource(source)] : [];
-  });
-}
-
-export function toPublicSource(source: SourceRecord): PublicSource {
-  const { allowedUserIds: _omit, ...rest } = source;
-  return rest;
+  return validateCitations(raw, scope).citations;
 }
 
 export const text = (v: unknown, max = 2000): string => (typeof v === "string" ? v.trim().slice(0, max) : "");

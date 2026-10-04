@@ -1,6 +1,6 @@
 import type { AccountBriefResponse, ApiError, ChatResponse, ClaimCheckResponse } from "@deeproot/shared";
 import { ACCOUNTS, BETACO_CANARY, DEMO_USERS } from "@deeproot/demo";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InMemoryAccountDirectory, InMemoryReportStore } from "../store/reports.js";
 import { InMemorySourceSearch } from "../store/sources.js";
 import { ALL_SOURCES, IDS, QUOTES, type ScriptedModel, reply, scriptedModel } from "../testing/agent.js";
@@ -74,6 +74,46 @@ describe("GET /api/accounts/:id/brief", () => {
     expect(model.calls).toHaveLength(1);
   });
 
+  it("returns internal and meeting evidence for brief citations", async () => {
+    const model = scriptedModel(reply([{ type: "blocker", title: "Blocked", description: "Unassigned", citations: [{ sourceId: IDS.tracker, quote: QUOTES.trackerBlocked }] }]));
+    const body = (await handleGetBrief({ user, accountId: "northstar" }, deps(model))).body as AccountBriefResponse;
+    expect(body.sources?.find((s) => s.id === IDS.tracker)?.kind).toBe("internal_app");
+    expect(JSON.stringify(body.sources)).not.toContain("allowedUserIds");
+  });
+
+  it("refreshes after five minutes and when source content changes without another retrieval", async () => {
+    const model = scriptedModel(reply(findings), reply(findings), reply(findings));
+    const d = deps(model);
+    const search = vi.spyOn(d.search, "search");
+    await handleGetBrief({ user, accountId: "northstar" }, d);
+    d.now = () => new Date("2026-10-02T12:05:00Z");
+    await handleGetBrief({ user, accountId: "northstar" }, d);
+    const original = ALL_SOURCES.find((s) => s.id === IDS.tracker)!;
+    await d.search.save({ ...original, body: `${original.body}\nNew dependency found.` });
+    await handleGetBrief({ user, accountId: "northstar" }, d);
+    expect(model.calls).toHaveLength(3);
+    expect(search).toHaveBeenCalledTimes(3);
+  });
+
+  it("coalesces simultaneous brief requests without retaining completed promises", async () => {
+    const model = scriptedModel(reply(findings));
+    const d = deps(model);
+    const [a, b] = await Promise.all([handleGetBrief({ user, accountId: "northstar" }, d), handleGetBrief({ user, accountId: "northstar" }, d)]);
+    expect(a).toEqual(b);
+    expect(model.calls).toHaveLength(1);
+  });
+
+  it("scopes freshness and evidence to the user's current permitted sources", async () => {
+    const model = scriptedModel(reply(findings), reply([]));
+    const d = deps(model);
+    await handleGetBrief({ user, accountId: "northstar" }, d);
+    const original = ALL_SOURCES.find((s) => s.id === IDS.internalEmail)!;
+    await d.search.save({ ...original, allowedUserIds: ["other-user"] });
+    const result = await handleGetBrief({ user, accountId: "northstar" }, d);
+    expect(model.calls).toHaveLength(2);
+    expect(JSON.stringify(result.body)).not.toContain(IDS.internalEmail);
+  });
+
   it("still shows the emails when the model is down, and retries next time", async () => {
     const model = scriptedModel(new Error("503"), reply(findings));
     const d = deps(model);
@@ -105,6 +145,12 @@ describe("POST /api/chat", () => {
     expect(body.answer).toContain("October 8");
     expect(body.citations[0]).toMatchObject({ sourceId: IDS.internalEmail, startOffset: expect.any(Number) });
     expect(body.sources.map((s) => s.id)).toEqual([IDS.internalEmail]);
+  });
+
+  it.each([undefined, null, "true", 1])("rejects a malformed grounding flag: %s", async (grounded) => {
+    const model = scriptedModel(json({ answer: "A cited answer", grounded, citations: [{ sourceId: IDS.internalEmail, quote: QUOTES.internalRisk }] }));
+    const result = await handleChat({ user, body: { accountId: "northstar", question: "What is needed?" } }, deps(model));
+    expect(result.body).toMatchObject({ grounded: false, citations: [], sources: [] });
   });
 
   it("replaces an answer with no valid citation by an honest 'not in the records'", async () => {
@@ -213,6 +259,17 @@ describe("POST /api/claims/check", () => {
 
     expect(body.verdict).toBe("uncertain");
     expect(body.citations).toEqual([]);
+    expect(body.suggestedRewrite).toBe("");
+  });
+
+  it("preserves the original statement for supported claims and suppresses uncited uncertain rewrites", async () => {
+    const supported = scriptedModel(json({ verdict: "supported", explanation: "Evidence", suggestedRewrite: "An altered promise", citations: [{ sourceId: IDS.internalEmail, quote: QUOTES.internalRisk }] }));
+    const a = await handleClaimCheck({ user, body: { accountId: "northstar", statement } }, deps(supported));
+    expect((a.body as ClaimCheckResponse).suggestedRewrite).toBe(statement);
+    const uncertain = scriptedModel(json({ verdict: "uncertain", explanation: "I invented an owner", suggestedRewrite: "Sam guarantees tomorrow", citations: [] }));
+    const b = await handleClaimCheck({ user, body: { accountId: "northstar", statement } }, deps(uncertain));
+    expect((b.body as ClaimCheckResponse).suggestedRewrite).toBe("");
+    expect((b.body as ClaimCheckResponse).explanation).not.toContain("invented");
   });
 
   it("treats an unknown verdict as uncertain", async () => {

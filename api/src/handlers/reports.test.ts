@@ -33,6 +33,19 @@ function draftWith(overrides: Partial<ReportDraft>): GenerateReport {
 }
 
 describe("POST /api/reports", () => {
+  it("creates a separate revision without replacing the prior report or its reserved action", async () => {
+    const { deps } = setup(); await handleCreateReport({ user: presenter, body }, deps);
+    await deps.reports.reserveLinearCreation(REPORT_ID, { issueId: crypto.randomUUID(), teamId: "team", ticket: (await deps.reports.get(REPORT_ID))!.ticketDraft, description: "Accepted draft" });
+    const prior = await deps.reports.get(REPORT_ID);
+    deps.newId = () => "revision-id";
+    const next = await handleCreateReport({ user: presenter, body: { ...body, previousReportId: REPORT_ID } }, deps);
+    expect(next.status).toBe(201); expect((next.body as ReportResponse).report.previousReportId).toBe(REPORT_ID);
+    expect(await deps.reports.get(REPORT_ID)).toEqual(prior);
+    expect((next.body as ReportResponse).report.linearIssueStatus).toBeUndefined();
+    const calls = (deps.generateReport as ReturnType<typeof vi.fn>).mock.calls.length;
+    expect((await handleCreateReport({ user: presenter, body: { ...body, previousReportId: "missing" } }, deps)).status).toBe(404);
+    expect((deps.generateReport as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(calls);
+  });
   it("creates and saves a cited report from the transcript", async () => {
     const { deps } = setup();
 
@@ -131,6 +144,12 @@ describe("POST /api/reports", () => {
     expect(report.commitments[0]!.dueDate).toBeNull();
     expect(report.commitments[0]!.citations).toHaveLength(1);
     expect(JSON.stringify({ report, sources })).not.toContain(BETACO_CANARY);
+  });
+
+  it("renders explicitly unassigned owners as unknown even when that word is cited", async () => {
+    const { deps } = setup(draftWith({ commitments: [{ text: "Confirm an owner", owner: "Unassigned", dueDate: null, citations: [{ sourceId: SAMPLE_SOURCE_IDS.tracker, quote: "Assignee: Unassigned" }] }] }));
+    const result = await handleCreateReport({ user: presenter, body }, deps);
+    expect((result.body as ReportResponse).report.commitments[0]!.owner).toBeNull();
   });
 
   it("keeps an owner and due date only when a cited quote states them", async () => {

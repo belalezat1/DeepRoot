@@ -24,6 +24,9 @@ export type InternalAppConnector = {
    * rejected: the connector never guesses an account, because the account decides who can read it.
    */
   accounts: Record<string, string>;
+  /** Trusted field/identity mappings, never supplied by an import request. */
+  permissions?: { path: string; users: Record<string, string> };
+  classification?: { path: string; deliveryValues: string[] };
 };
 
 /**
@@ -91,6 +94,14 @@ export function ingestInternalAppRecords(
     const account = accountId ? byId.get(accountId) : undefined;
     if (!account) return reject(`customer "${customerKey ?? ""}" is not mapped to a Deeproot account`);
 
+    if (connector.classification && !connector.classification.deliveryValues.includes(String(getPath(raw, connector.classification.path)))) return reject("record is not classified for account delivery");
+    let allowedUserIds = [...account.allowedUserIds];
+    if (connector.permissions) {
+      const upstream = getPath(raw, connector.permissions.path);
+      if (!Array.isArray(upstream) || !upstream.length || upstream.some(id => typeof id !== "string" || !Object.hasOwn(connector.permissions!.users, id))) return reject("missing or unmapped source permissions");
+      allowedUserIds = [...new Set(upstream.map(id => connector.permissions!.users[id as string]!))].filter(id => account.allowedUserIds.includes(id));
+      if (!allowedUserIds.length) return reject("source permissions grant no account access");
+    }
     const title = asText(getPath(raw, connector.fields.title));
     if (!title) return reject(`missing ${connector.fields.title}`);
 
@@ -120,7 +131,8 @@ export function ingestInternalAppRecords(
       author: author ?? connector.appName,
       occurredAt,
       body,
-      allowedUserIds: [...account.allowedUserIds],
+      allowedUserIds,
+      policy: { classification: "delivery", accessMode: connector.permissions ? "source" : "account" },
       app: { id: connector.appId, name: connector.appName },
     });
   });

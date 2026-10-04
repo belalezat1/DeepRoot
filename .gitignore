@@ -13,6 +13,7 @@ local.settings.json
 # Tooling
 .azure/
 .swa/
+.playwright-mcp/
 *.log
 
 .DS_Store

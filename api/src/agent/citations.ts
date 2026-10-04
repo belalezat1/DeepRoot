@@ -1,7 +1,13 @@
+import { sourceVersion } from "../store/publicSources.js";
 import type { Citation, SourceRecord } from "@deeproot/shared";
 
 /** Shorter quotes ("Blocked", "Ohio") match too much to count as evidence on their own. */
 export const MIN_QUOTE_LENGTH = 8;
+const NO_OWNER = /^(unassigned|unknown|none|n\/a|tbd|null|nobody)$/i;
+
+export function ownerIsCited(owner: string, citations: Citation[]): boolean {
+  return !!owner && !NO_OWNER.test(owner) && citations.some((c) => c.quote.toLowerCase().includes(owner.toLowerCase()));
+}
 
 const QUOTE_CHARS: Record<string, string> = { "‘": "'", "’": "'", "“": '"', "”": '"' };
 
@@ -45,6 +51,18 @@ export type CitationScope = {
   sourcesById: Map<string, SourceRecord>;
 };
 
+/** Validate and deduplicate evidence consistently across analysis, reports, chat, and claims. */
+export function validateCitations(raw: unknown, scope: CitationScope): { citations: Citation[]; dropped: number } {
+  const citations: Citation[] = [];
+  let dropped = 0;
+  for (const item of Array.isArray(raw) ? raw : []) {
+    const citation = validateCitation(item, scope);
+    if (!citation) dropped++;
+    else if (!citations.some((c) => c.sourceId === citation.sourceId && c.startOffset === citation.startOffset)) citations.push(citation);
+  }
+  return { citations, dropped };
+}
+
 /**
  * Returns the citation with the exact source text and offsets if it is real evidence, else null.
  * Valid means: the source was in the model's context, belongs to the requested account, the user
@@ -64,5 +82,5 @@ export function validateCitation(raw: unknown, scope: CitationScope): Citation |
 
   const at = locateQuote(source.body, trimmed);
   if (!at) return null;
-  return { sourceId, quote: source.body.slice(at.start, at.end), startOffset: at.start, endOffset: at.end };
+  return { sourceId, sourceVersion: sourceVersion(source), quote: source.body.slice(at.start, at.end), startOffset: at.start, endOffset: at.end };
 }

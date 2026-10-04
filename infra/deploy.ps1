@@ -11,7 +11,7 @@ $infra = $PSScriptRoot
 
 function Invoke-Az {
   $output = & az @args
-  if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }
+  if ($LASTEXITCODE -ne 0) { throw "Azure CLI command failed (arguments omitted to protect settings)." }
   $output
 }
 
@@ -41,6 +41,23 @@ foreach ($name in $externalSettings.Keys) {
   $deployArgs += '--parameters', "$($externalSettings[$name])=$value"
 }
 
+# Preserve trusted routing and connector credentials. Secure parameter file avoids exposing values in logs.
+$connectorSettings = @{}
+$connectorNames = @('EMAIL_ROUTING_JSON', 'CONNECTOR_ACCOUNT_MAPS_JSON', 'CONNECTOR_POLICIES_JSON', 'CONNECTOR_HTTP_JSON', 'ENABLE_DEMO_APPS', 'DEMO_APP_ACCOUNT_IDS', 'DEMO_APPS_TOKEN', 'DEMO_APPS_BASE_URL')
+if ($existingSettings) { $existingSettings.PSObject.Properties | Where-Object { $_.Name -in $connectorNames -or $_.Name -like 'CONNECTOR_TOKEN_*' } | ForEach-Object { $connectorSettings[$_.Name] = $_.Value } }
+foreach ($name in $connectorNames) { $value = [Environment]::GetEnvironmentVariable($name); if ($null -ne $value) { $connectorSettings[$name] = $value } }
+# tokenEnv may reference a custom variable; preserve that exact setting too.
+if ($connectorSettings.ContainsKey('CONNECTOR_HTTP_JSON')) {
+  $http = $connectorSettings['CONNECTOR_HTTP_JSON'] | ConvertFrom-Json
+  $http.PSObject.Properties | ForEach-Object {
+    $name = $_.Value.tokenEnv
+    if ($name) { $value = [Environment]::GetEnvironmentVariable($name); if ($null -eq $value -and $existingSettings) { $value = $existingSettings.$name }; if ($null -ne $value) { $connectorSettings[$name] = $value } }
+  }
+}
+$connectorFile = Join-Path ([IO.Path]::GetTempPath()) ('deeproot-settings-' + [guid]::NewGuid().ToString() + '.json')
+@{ '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'; contentVersion = '1.0.0.0'; parameters = @{ connectorSettings = @{ value = $connectorSettings } } } | ConvertTo-Json -Depth 10 | Set-Content $connectorFile
+$deployArgs += '--parameters', ('@' + $connectorFile)
+try {
 if ($WhatIf) {
   Invoke-Az deployment sub what-if @deployArgs --result-format ResourceIdOnly
   return
@@ -63,3 +80,5 @@ Invoke-RestMethod -Method Put `
 Write-Host ''
 Write-Host 'Deployed:'
 $outputs.PSObject.Properties | ForEach-Object { '  {0,-20} {1}' -f $_.Name, $_.Value.value }
+
+} finally { Remove-Item -Force $connectorFile -ErrorAction SilentlyContinue }

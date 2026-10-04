@@ -73,6 +73,9 @@ param linearTeamId string = ''
 @description('Linear team key shown in issue IDs, e.g. DEE.')
 param linearTeamKey string = ''
 
+@secure()
+param connectorSettings object = {}
+
 var tags = {
   project: 'deeproot'
   event: 'girlhacks2026'
@@ -142,6 +145,7 @@ module resources 'resources.bicep' = {
     linearTeamId: linearTeamId
     linearTeamKey: linearTeamKey
     demoUserId: demoUserId
+    connectorSettings: connectorSettings
   }
 }
 

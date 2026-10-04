@@ -105,7 +105,7 @@ export async function transcribeMeeting(input: TranscribeMeetingInput): Promise<
       origin: "prepared-fallback",
     };
   }
-  throw new ApiFailure("TRANSCRIPTION_FAILED", "Transcription failed and no prepared transcript is set.");
+  throw new ApiFailure("TRANSCRIPTION_FAILED", "The recording could not be transcribed. Retry the upload or paste its transcript.");
 }
 
 export type MeetingSourceInput = {

@@ -142,7 +142,7 @@ describe("TranscribeAudio contract", () => {
   it("diarized segments become a named transcript", async () => {
     checkTranscriptSegments(diarized);
     const result = await createBackend(adapters()).transcribe(upload);
-    expect(result.body).toMatchObject({ origin: "azure-speech", transcript: "Maya: Where are we on the launch?\nSam: State tax is the open item." });
+    expect(result.body).toMatchObject({ origin: "azure-speech", transcript: "Speaker 1: Where are we on the launch?\nSpeaker 2: State tax is the open item." });
   });
 
   it("segments without diarization still produce a transcript", async () => {
@@ -151,9 +151,9 @@ describe("TranscribeAudio contract", () => {
     expect((result.body as TranscribeResponse).transcript).toBe("Where are we on the launch?\nState tax is the open item.");
   });
 
-  it("an adapter that throws falls back to the prepared transcript", async () => {
+  it("an adapter that throws uses the prepared transcript only when requested", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const result = await createBackend(adapters({ transcribeAudio: async () => Promise.reject(new Error("Speech 503")) })).transcribe(upload);
+    const result = await createBackend(adapters({ transcribeAudio: async () => Promise.reject(new Error("Speech 503")) })).transcribe({ ...upload, allowPreparedFallback: true });
     expect(result.body).toMatchObject({ origin: "prepared-fallback", transcript: NORTHSTAR_MEETING_TRANSCRIPT });
   });
 

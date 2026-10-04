@@ -28,7 +28,7 @@ export function createAzureOpenAiTextGenerator(config: {
           : {}),
       };
 
-      const data = (await postJson("Azure OpenAI", url, { "api-key": config.apiKey }, body)) as ChatCompletionResponse;
+      const data = (await postJson("Azure OpenAI", url, { "api-key": config.apiKey }, body, { timeoutMs: 12_000, signal: request.signal })) as ChatCompletionResponse;
 
       const choice = data.choices?.[0];
       if (choice?.finish_reason === "length") {

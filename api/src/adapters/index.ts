@@ -1,13 +1,16 @@
 // Teammate 1's adapters. createAdapters() picks Azure for each service whose settings are present
 // (see api/.env.example) and an in-memory or stub version otherwise, so the API runs without keys.
 // In-memory search starts with the demo seed data.
+import { InMemoryAnalysisStore, type AnalysisStore } from "../store/analyses.js";
+import { AuthoritativeSourceSearch } from "./authoritativeSearch.js";
+import { CosmosIntegrationStore, InMemoryIntegrationStore, type IntegrationStore } from "../integrations/store.js";
 import type { AccountDirectory } from "../access.js";
 import type { ChatModel } from "../agent/model.js";
 import type { TranscribeAudio } from "../ingest/meeting.js";
 import { buildSeedSources, SEED_ACCOUNTS } from "../ingest/seed.js";
 import { InMemoryAccountDirectory, InMemoryReportStore, type ReportStore } from "../store/reports.js";
 import { InMemorySourceSearch, type SourceSearch, type SourceWriter } from "../store/sources.js";
-import { AzureSourceWriter, connectCosmos, CosmosAccountDirectory, CosmosReportStore } from "./cosmos.js";
+import { AzureSourceWriter, connectCosmos, CosmosAccountDirectory, CosmosReportStore, CosmosSourceReader, CosmosAnalysisStore } from "./cosmos.js";
 import { AzureSourceSearch } from "./search.js";
 import { createAzureSpeechTranscriber, createStubTranscriber } from "./speech.js";
 import { createChatModel } from "./text/chatModel.js";
@@ -24,6 +27,8 @@ export type Adapters = {
   transcribeAudio: TranscribeAudio;
   textGenerator: TextGenerator;
   chatModel: ChatModel;
+  integrationStore: IntegrationStore;
+  analyses: AnalysisStore;
   reports: ReportStore;
   accounts: AccountDirectory;
   search: SourceSearch;
@@ -54,13 +59,17 @@ export function createAdapters(env: NodeJS.ProcessEnv = process.env): Adapters {
   const memory = cosmos && azureSearch ? undefined : new InMemorySourceSearch(buildSeedSources());
   const textGenerator = createTextGenerator(env);
 
+  const reader = cosmos && azureSearch ? new CosmosSourceReader(cosmos.sources) : memory!;
+  const search: SourceSearch = memory ?? new AuthoritativeSourceSearch(azureSearch!, reader);
   return {
+    integrationStore: cosmos ? new CosmosIntegrationStore(cosmos.integrations) : new InMemoryIntegrationStore(),
+    analyses: cosmos ? new CosmosAnalysisStore(cosmos.briefs) : new InMemoryAnalysisStore(),
     transcribeAudio: speech ?? createStubTranscriber(),
     textGenerator,
     chatModel: createChatModel(textGenerator),
     reports: cosmos ? new CosmosReportStore(cosmos.reports) : new InMemoryReportStore(),
     accounts: cosmos ? new CosmosAccountDirectory(cosmos.accounts) : new InMemoryAccountDirectory(SEED_ACCOUNTS),
-    search: memory ?? azureSearch!,
+    search,
     sourceWriter: memory ?? new AzureSourceWriter(cosmos!.sources, azureSearch!),
     backends: {
       speech: speech ? "azure" : "stub",

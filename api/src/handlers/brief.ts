@@ -1,18 +1,21 @@
 import type { AccountBrief, AccountBriefResponse, AgentAnalysis } from "@deeproot/shared";
 import { type SignedInUser, authorizeAccount, filterPermittedSources, requireUser } from "../access.js";
-import { type AnalyzeDeps, analyzeAccount } from "../agent/analyze.js";
+import { type AnalyzeDeps, analyzeAccount, MAX_CONTEXT_SOURCES } from "../agent/analyze.js";
+import { sourceFingerprint } from "../agent/fingerprint.js";
 import { ApiFailure, type HandlerResult, toErrorResult } from "../errors.js";
 import { toPublicSource } from "../qa/context.js";
 
 const MAX_EMAILS = 10;
 const MAX_ITEMS = 6;
 
-export type BriefDeps = AnalyzeDeps;
+export type BriefDeps = AnalyzeDeps & { pendingBriefs?: Map<string, Promise<AgentAnalysis>> };
+const CACHE_MS = 5 * 60 * 1000;
+// Direct handler consumers share by their analysis store; createBackend supplies its own map.
+const pendingByStore = new WeakMap<AnalyzeDeps["analyses"], Map<string, Promise<AgentAnalysis>>>();
 
 /**
  * GET /api/accounts/:id/brief: recent emails plus a cited pre-meeting brief.
- * Reuses the caller's latest stored analysis; only runs the agent (which stores its result) when
- * there is none yet, so reloading the page doesn't call the model again.
+ * Reuses a recent analysis only while its permitted source snapshot is unchanged.
  */
 export async function handleGetBrief(
   input: { user: SignedInUser | null; accountId: string },
@@ -23,7 +26,7 @@ export async function handleGetBrief(
     const account = await authorizeAccount(user, input.accountId, deps.accounts);
 
     const recent = filterPermittedSources(
-      await deps.search.search({ accountId: account.id, userId: user.userId, query: "", top: 25 }),
+      await deps.search.search({ accountId: account.id, userId: user.userId, query: "", top: MAX_CONTEXT_SOURCES }),
       account.id,
       user.userId,
     );
@@ -34,12 +37,35 @@ export async function handleGetBrief(
       .map(toPublicSource);
 
     let brief: AccountBrief;
+    let sources: AccountBriefResponse["sources"] = [];
     try {
       const stored = await deps.analyses.latest(account.id, user.userId).catch((err: unknown) => {
         console.error("Loading the latest analysis failed; running a new one", err);
         return null;
       });
-      brief = toBrief(stored ?? (await analyzeAccount({ user, accountId: account.id }, deps)));
+      const now = (deps.now ?? (() => new Date()))().getTime();
+      const age = stored ? now - new Date(stored.generatedAt).getTime() : Infinity;
+      const fingerprint = sourceFingerprint(recent);
+      let analysis = stored;
+      if (!analysis || !(age >= 0 && age < CACHE_MS) || analysis.sourceFingerprint !== fingerprint) {
+        let pending = deps.pendingBriefs ?? pendingByStore.get(deps.analyses);
+        if (!pending) {
+          pending = new Map();
+          pendingByStore.set(deps.analyses, pending);
+        }
+        const key = JSON.stringify([account.id, user.userId, fingerprint]);
+        let generation = pending.get(key);
+        if (!generation) {
+          generation = analyzeAccount({ user, accountId: account.id, retrievedSources: recent }, deps);
+          pending.set(key, generation);
+        }
+        try { analysis = await generation; }
+        finally { if (pending.get(key) === generation) pending.delete(key); }
+      }
+      brief = toBrief(analysis);
+      // Use the current permitted records, rather than exposing an old analysis snapshot.
+      const ids = new Set(analysis.sources.map((s) => s.id));
+      sources = recent.filter((s) => ids.has(s.id)).map(toPublicSource);
     } catch (err) {
       // The emails are still useful when the model is down; show them with an honest note.
       if (!(err instanceof ApiFailure) || (err.code !== "INTEGRATION_UNAVAILABLE" && err.code !== "INVALID_MODEL_OUTPUT")) {
@@ -48,7 +74,7 @@ export async function handleGetBrief(
       brief = { summary: "The brief couldn't be generated right now. The emails below are current.", items: [], openQuestions: [] };
     }
 
-    return { status: 200, body: { account: { id: account.id, name: account.name }, emails, brief } };
+    return { status: 200, body: { account: { id: account.id, name: account.name }, emails, sources, brief } };
   } catch (err) {
     return toErrorResult(err);
   }

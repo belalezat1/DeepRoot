@@ -7,6 +7,7 @@ import { ingestInternalAppRecords, type InternalAppConnector } from "../ingest/i
 import { meetingToSource } from "../ingest/meeting.js";
 import type { IngestResult } from "../ingest/result.js";
 import type { SourceWriter } from "../store/sources.js";
+import { assertDeliveryContent, containsPersonalPayroll } from "../dataPolicy.js";
 
 export type IngestDeps = {
   accounts: AccountDirectory;
@@ -38,7 +39,14 @@ function batch(body: unknown, field: string): unknown[] {
 async function save(sources: SourceWriter, records: SourceRecord[]): Promise<void> {
   if (records.length === 0) return;
   try {
-    await Promise.all(records.map((r) => sources.save(r)));
+    // Wait for all workers to settle before returning a failure; no abandoned writes race the retry.
+    let next = 0;
+    const workers = Array.from({ length: Math.min(8, records.length) }, async () => {
+      while (next < records.length) await sources.save(records[next++]!);
+    });
+    const results = await Promise.allSettled(workers);
+    const failed = results.find((r) => r.status === "rejected");
+    if (failed?.status === "rejected") throw failed.reason;
   } catch (err) {
     console.error("Saving sources failed", err);
     throw new ApiFailure("INTEGRATION_UNAVAILABLE", "Could not save the sources. Please try again.");
@@ -50,13 +58,19 @@ const response = (result: IngestResult): IngestResponse => ({
   rejected: result.rejected,
 });
 
+function applyDataPolicy(result: IngestResult): IngestResult {
+  const records = result.records.filter((record) => !containsPersonalPayroll(`${record.title}\n${record.body}`));
+  if (records.length !== result.records.length) throw new ApiFailure("BAD_REQUEST", "The batch includes individual payroll details. Remove those records before importing.");
+  return result;
+}
+
 /** POST /api/ingest/emails: raw emails, routed to accounts through the trusted mailbox table. */
 export async function handleIngestEmails(input: IngestInput, deps: IngestDeps): Promise<HandlerResult<IngestResponse>> {
   try {
     const user = requireUser(input.user);
     const emails = batch(input.body, "emails");
     const accounts = await permittedAccounts(user, Object.values(deps.emailRouting.mailboxes), deps.accounts);
-    const result = ingestEmails(emails, deps.emailRouting, accounts);
+    const result = applyDataPolicy(ingestEmails(emails, deps.emailRouting, accounts));
     await save(deps.sources, result.records);
     return { status: 200, body: response(result) };
   } catch (err) {
@@ -75,7 +89,7 @@ export async function handleIngestAppRecords(
     if (!connector) throw notFound();
     const records = batch(input.body, "records");
     const accounts = await permittedAccounts(user, Object.values(connector.accounts), deps.accounts);
-    const result = ingestInternalAppRecords(connector, records, accounts);
+    const result = applyDataPolicy(ingestInternalAppRecords(connector, records, accounts));
     await save(deps.sources, result.records);
     return { status: 200, body: response(result) };
   } catch (err) {
@@ -97,6 +111,7 @@ export async function handleSaveMeeting(input: IngestInput, deps: Pick<IngestDep
     if (body.title !== undefined && typeof body.title !== "string") throw new ApiFailure("BAD_REQUEST", "title must be text.");
 
     const account = await authorizeAccount(user, body.accountId as string, deps.accounts);
+    assertDeliveryContent(body.transcript as string);
     const source = meetingToSource({
       account,
       meetingId: body.meetingId as string,

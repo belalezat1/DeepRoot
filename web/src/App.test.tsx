@@ -25,7 +25,7 @@ describe('Deeproot frontend demo flow', () => {
     await screen.findByRole('heading', { name: 'Northstar Logistics' });
     expect(screen.getByRole('heading', { name: 'Account summary' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Questions to resolve' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Account emails' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Account sources' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Process meeting' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Inbox' }));
     const context = screen.getByRole('complementary', { name: 'Analysis context' });
@@ -103,6 +103,9 @@ describe('Deeproot frontend demo flow', () => {
     const transcript = screen.getByRole('textbox', { name: 'Meeting transcript' }) as HTMLTextAreaElement;
     fireEvent.change(transcript, { target: { value: transcript.value.replace('get back to you.', 'follow up with you.') } });
     expect(transcript.value).toContain('follow up with you');
+    await user.click(screen.getByRole('button', { name: /Generate report/ }));
+    await screen.findByText(/Mock mode previews the prepared meeting only/);
+    await user.click(screen.getByRole('button', { name: /Use prepared transcript/ }));
     await user.click(screen.getByRole('button', { name: /Generate report/ }));
 
     await screen.findByRole('heading', { name: 'Meeting report' });

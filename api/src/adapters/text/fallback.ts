@@ -9,9 +9,11 @@ import type { TextGenerator } from "./types.js";
 export function withFallback(primary: TextGenerator, secondary: TextGenerator): TextGenerator {
   return {
     async generateText(request) {
+      request.signal?.throwIfAborted();
       try {
         return await primary.generateText(request);
       } catch (error) {
+        request.signal?.throwIfAborted();
         if (!isTransient(error)) throw error;
         console.warn(`Primary model unavailable, using fallback: ${(error as Error).message.split("\n")[0]}`);
         return secondary.generateText(request);
