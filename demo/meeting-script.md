@@ -1,6 +1,6 @@
 # Northstar meeting clip script
 
-Record this as a 25–30 second clip with two speakers at a normal pace. Maya speaks first, so Speech diarization labels her speaker "1" (see `DEMO_SPEAKER_NAMES`). The words must match `NORTHSTAR_MEETING_TRANSCRIPT` in [src/fixtures.ts](src/fixtures.ts), which is also the fallback if Azure Speech fails.
+Record this as a 25–30 second clip with two speakers at a normal pace. Review speaker labels after transcription; Speech labels do not establish identity. The prepared version is `NORTHSTAR_MEETING_TRANSCRIPT` in [src/fixtures.ts](src/fixtures.ts), selected explicitly if needed.
 
 > **Maya:** Before we wrap up, where are we on the October 15 payroll launch?
 >
@@ -16,13 +16,15 @@ Record this as a 25–30 second clip with two speakers at a normal pace. Maya sp
 
 ## Recording from Zoom
 
-Zoom saves `.m4a` (audio only) or `.mp4`. The upload accepts WAV only, so convert first:
+Upload the Zoom `.mp4` directly, with AAC audio, under 25 MB and 13 minutes. Deeproot extracts audio in the browser; only normalized audio reaches Speech. Keep the MP4 on the demo laptop before presenting.
+
+If your recording is audio-only `.m4a`, create an MP4 locally first:
 
 ```sh
-ffmpeg -i audio.m4a -ac 1 -ar 16000 meeting.wav
+ffmpeg -f lavfi -i color=c=black:s=640x360:r=10 -i audio.m4a -c:v libx264 -c:a aac -shortest -movflags +faststart meeting.mp4
 ```
 
-Keep `meeting.wav` on the demo laptop. Don't download it from Zoom during the presentation.
+Text transcript import remains available if the browser cannot decode the recording.
 
 ## Where each fact lives
 

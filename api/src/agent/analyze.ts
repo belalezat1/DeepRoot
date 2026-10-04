@@ -1,12 +1,17 @@
-import type { Account, AgentAnalysis, PublicSource, SourceRecord } from "@deeproot/shared";
+import { verifyCandidates } from "../qa/investigate.js";
+import type { Account, AgentAnalysis, SourceRecord } from "@deeproot/shared";
 import { type AccountDirectory, type SignedInUser, authorizeAccount, requireUser } from "../access.js";
 import { ApiFailure } from "../errors.js";
 import { safeId } from "../ingest/text.js";
 import type { AnalysisStore } from "../store/analyses.js";
 import type { SourceSearch } from "../store/sources.js";
-import { groundFindings, parseModelOutput, type ModelOutput } from "./findings.js";
+import { groundFindings, parseModelOutput } from "./findings.js";
 import type { ChatModel } from "./model.js";
-import { RETRY_NOTE, SYSTEM_PROMPT, buildUserPrompt } from "./prompt.js";
+import { SYSTEM_PROMPT, buildUserPrompt } from "./prompt.js";
+import { callJsonModel } from "./json.js";
+import { sourceFingerprint } from "./fingerprint.js";
+import { publicSourcesFor } from "../store/publicSources.js";
+import { accountTeamSources, assertDeliveryOutput } from "../dataPolicy.js";
 
 export const MAX_CONTEXT_SOURCES = 25;
 const MAX_OUTPUT_TOKENS = 4000;
@@ -28,6 +33,8 @@ export type AnalyzeInput = {
    * through the same isolation check as retrieved sources.
    */
   extraSources?: SourceRecord[];
+  /** A just-retrieved snapshot; authorization and isolation are still checked before use. */
+  retrievedSources?: SourceRecord[];
 };
 
 /**
@@ -56,15 +63,6 @@ async function retrieve(search: SourceSearch, req: Parameters<SourceSearch["sear
   }
 }
 
-async function callModel(model: ChatModel, system: string, user: string): Promise<string> {
-  try {
-    return await model.complete({ system, user, maxTokens: MAX_OUTPUT_TOKENS });
-  } catch (err) {
-    console.error("Analysis model call failed", err);
-    throw new ApiFailure("INTEGRATION_UNAVAILABLE", "The analysis model is unavailable right now. Please try again.");
-  }
-}
-
 /**
  * Authorized sources (SourceSearch) -> analysis model (ChatModel) -> grounded findings (AnalysisStore).
  * 1. Authenticate and authorize the account (before any retrieval).
@@ -79,7 +77,7 @@ export async function analyzeAccount(input: AnalyzeInput, deps: AnalyzeDeps): Pr
   const account = await authorizeAccount(user, input.accountId, deps.accounts);
   const now = (deps.now ?? (() => new Date()))();
 
-  const retrieved = await retrieve(deps.search, {
+  const retrieved = input.retrievedSources ?? await retrieve(deps.search, {
     accountId: account.id,
     userId: user.userId,
     query: input.focus ?? "",
@@ -88,8 +86,9 @@ export async function analyzeAccount(input: AnalyzeInput, deps: AnalyzeDeps): Pr
   // Extra sources first (a just-reviewed meeting beats an older indexed copy), each ID once.
   const unique = new Map<string, SourceRecord>();
   for (const s of [...(input.extraSources ?? []), ...retrieved]) if (!unique.has(s.id)) unique.set(s.id, s);
-  const sources = [...unique.values()].slice(0, MAX_CONTEXT_SOURCES);
-  assertContextIsolated(sources, account, user.userId);
+  const candidates = [...unique.values()].slice(0, MAX_CONTEXT_SOURCES);
+  assertContextIsolated(candidates, account, user.userId);
+  const sources = accountTeamSources(candidates);
   const byId = new Map(sources.map((s) => [s.id, s])); // citations may only point at what the model saw
 
   const generatedAt = now.toISOString();
@@ -98,6 +97,7 @@ export async function analyzeAccount(input: AnalyzeInput, deps: AnalyzeDeps): Pr
     accountId: account.id,
     createdBy: user.userId,
     analyzedSourceIds: sources.map((s) => s.id),
+    sourceFingerprint: sourceFingerprint(sources),
     generatedAt,
   };
   if (sources.length === 0) {
@@ -111,20 +111,24 @@ export async function analyzeAccount(input: AnalyzeInput, deps: AnalyzeDeps): Pr
     };
   }
 
+  const signal = AbortSignal.timeout(40_000);
   const userPrompt = buildUserPrompt(account, sources, now.toISOString().slice(0, 10), input.focus);
-  let output: ModelOutput | null = parseModelOutput(await callModel(deps.model, SYSTEM_PROMPT, userPrompt));
-  if (!output) {
-    output = parseModelOutput(await callModel(deps.model, SYSTEM_PROMPT, `${userPrompt}\n\n${RETRY_NOTE}`));
-  }
-  if (!output) throw new ApiFailure("INVALID_MODEL_OUTPUT", "The analysis model returned an unreadable result. Please try again.");
+  const raw = await callJsonModel(deps.model, SYSTEM_PROMPT, userPrompt, MAX_OUTPUT_TOKENS, (value) => parseModelOutput(value) !== null, "analysis", signal);
+  const output = parseModelOutput(raw)!;
+  assertDeliveryOutput(output);
 
   const grounded = groundFindings(output.findings, { accountId: account.id, userId: user.userId, sourcesById: byId });
+  const factCandidates = grounded.findings.map(f => ({ id: f.id, text: `${f.title}: ${f.description}${f.owner ? ` Owner: ${f.owner}.` : ""}${f.dueDate ? ` Due: ${f.dueDate}.` : ""}`, citations: f.citations, proposed: f.type === "open_question" }));
+  const summaryEvidence = grounded.findings.flatMap(f => f.citations);
+  const verified = await verifyCandidates(deps.model, [...factCandidates, ...(summaryEvidence.length ? [{ id: "summary", text: output.summary, citations: summaryEvidence }] : [])], sources, account, user.userId, signal);
+  const supported = grounded.findings.filter(f => verified.get(f.id)?.verdict === "supported");
+  const summaryCitations = verified.get("summary")?.verdict === "supported" ? verified.get("summary")!.citations : [];
   const analysis: AgentAnalysis = {
     ...base,
-    summary: grounded.findings.length > 0 ? output.summary : "No findings could be supported with evidence from this account's sources.",
-    findings: grounded.findings,
-    sources: citedSources(grounded.findings.flatMap((f) => f.relatedSourceIds), byId),
-    validation: { droppedCitations: grounded.droppedCitations, droppedFindings: grounded.droppedFindings },
+    summary: supported.length > 0 ? summaryCitations.length ? output.summary : supported.map(f => f.description).join(" ") : "No findings could be supported with evidence from this account's sources.",
+    findings: supported,
+    sources: publicSourcesFor([...supported.flatMap((f) => f.citations), ...summaryCitations], byId),
+    validation: { droppedCitations: grounded.droppedCitations, droppedFindings: grounded.droppedFindings + grounded.findings.length - supported.length },
   };
 
   // A failed save should not throw away a good analysis the user is waiting for: return it, and
@@ -135,12 +139,4 @@ export async function analyzeAccount(input: AnalyzeInput, deps: AnalyzeDeps): Pr
     console.error("Saving the analysis failed", err);
   }
   return analysis;
-}
-
-/** The cited sources, without access lists, in first-cited order: what UI cards and drafts display. */
-function citedSources(ids: string[], byId: Map<string, SourceRecord>): PublicSource[] {
-  return [...new Set(ids)].map((id) => {
-    const { allowedUserIds: _hidden, ...source } = byId.get(id)!;
-    return source;
-  });
 }

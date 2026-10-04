@@ -1,4 +1,7 @@
-import type { CreateReportRequest, MeetingReport, PublicSource, ReportResponse, SourceRecord } from "@deeproot/shared";
+import { sourceVersion } from "../store/publicSources.js";
+import { assertReportEvidence } from "../store/authorization.js";
+import type { CreateReportRequest, MeetingReport, ReportResponse } from "@deeproot/shared";
+import { reportCitations } from "@deeproot/shared";
 import {
   type AccountDirectory,
   type SignedInUser,
@@ -13,21 +16,22 @@ import type { GenerateReport } from "../reports/generator.js";
 import { sanitizeReportDraft } from "../reports/validate.js";
 import type { ReportStore } from "../store/reports.js";
 import type { SourceSearch, SourceWriter } from "../store/sources.js";
+import { publicSourcesFor } from "../store/publicSources.js";
+import { MAX_CONTEXT_SOURCES } from "../agent/analyze.js";
+import { assertDeliveryContent, assertDeliveryOutput, containsPersonalPayroll } from "../dataPolicy.js";
 
 export type ReportDeps = {
   accounts: AccountDirectory;
   search: SourceSearch;
   sourceWriter: SourceWriter;
   reports: ReportStore;
-  /** Teammate 3's AI workflow; `sampleReportGenerator` until it lands. */
+  /** The configured model workflow, or an explicitly supplied fixture in tests. */
   generateReport: GenerateReport;
   now?: () => Date;
   newId?: () => string;
 };
 
 const MAX_TRANSCRIPT_CHARS = 20_000;
-/** Matches the agent: the most recent permitted sources the model sees alongside the meeting. */
-const MAX_CONTEXT_SOURCES = 25;
 
 /** POST /api/reports: turn a reviewed transcript into a saved, cited report. */
 export async function handleCreateReport(
@@ -36,9 +40,15 @@ export async function handleCreateReport(
 ): Promise<HandlerResult<ReportResponse>> {
   try {
     const user = requireUser(input.user);
-    const { accountId, transcript } = parseCreateReport(input.body);
+    const { accountId, transcript, previousReportId } = parseCreateReport(input.body);
     // Access is checked before any source is read or the model is called.
     const account = await authorizeAccount(user, accountId, deps.accounts);
+    assertDeliveryContent(transcript);
+    if (previousReportId) {
+      const previous = await deps.reports.get(previousReportId);
+      if (!previous || previous.accountId !== account.id) throw notFound();
+      await assertReportEvidence(previous, account, user.userId, deps.search);
+    }
 
     const now = (deps.now ?? (() => new Date()))();
     const reportId = (deps.newId ?? (() => `report-${crypto.randomUUID()}`))();
@@ -55,11 +65,12 @@ export async function handleCreateReport(
       account.id,
       user.userId,
     );
-    const permitted = [meeting, ...stored.filter((s) => s.id !== meeting.id)].slice(0, MAX_CONTEXT_SOURCES);
+    const permitted = [meeting, ...stored.filter((s) => s.kind !== "meeting" && s.id !== meeting.id)].slice(0, MAX_CONTEXT_SOURCES);
 
     let raw: unknown;
     try {
       raw = await deps.generateReport({
+        userId: user.userId,
         account: { id: account.id, name: account.name },
         transcript: meeting.body,
         meetingSourceId: meeting.id,
@@ -74,6 +85,7 @@ export async function handleCreateReport(
 
     const index = new Map(permitted.map((s) => [s.id, s]));
     const { draft, dropped } = sanitizeReportDraft(raw, { accountId: account.id, userId: user.userId, sourcesById: index });
+    assertDeliveryOutput(draft);
     if (Object.values(dropped).some((n) => n > 0)) console.warn(`Report ${reportId}: removed unsupported content`, dropped);
 
     const report: MeetingReport = {
@@ -83,9 +95,10 @@ export async function handleCreateReport(
       ...draft,
       createdAt: now.toISOString(),
       createdBy: user.userId,
+      ...(previousReportId ? { previousReportId } : {}),
     };
 
-    const sources = citedSources(report, index);
+    const sources = publicSourcesFor(reportCitations(report), index);
     await deps.sourceWriter.save(meeting); // so chat and later reports can cite this meeting
     await deps.reports.save({ ...report, citedSources: sources });
     return { status: 201, body: { report, sources } };
@@ -97,16 +110,20 @@ export async function handleCreateReport(
 /** GET /api/reports/:id: a saved report, after checking the user may see its account. */
 export async function handleGetReport(
   input: { user: SignedInUser | null; reportId: string },
-  deps: Pick<ReportDeps, "accounts" | "reports">,
+  deps: Pick<ReportDeps, "accounts" | "reports"> & { search?: SourceSearch },
 ): Promise<HandlerResult<ReportResponse>> {
   try {
     const user = requireUser(input.user);
     const stored = await deps.reports.get(input.reportId);
     if (!stored) throw notFound();
-    await authorizeAccount(user, stored.accountId, deps.accounts);
+    const account = await authorizeAccount(user, stored.accountId, deps.accounts);
+    await assertReportEvidence(stored, account, user.userId, deps.search);
+    if (containsPersonalPayroll(JSON.stringify(stored))) throw notFound();
 
-    const { citedSources: sources = [], ...report } = stored;
-    return { status: 200, body: { report, sources } };
+    const { citedSources: sources = [], linearCreation: _private, ...report } = stored;
+    const snapshots = sources.map(s => ({ ...s, version: s.version ?? sourceVersion(s) }));
+    for (const citation of reportCitations(report)) citation.sourceVersion ??= snapshots.find(s => s.id === citation.sourceId)?.version;
+    return { status: 200, body: { report, sources: snapshots } };
   } catch (err) {
     return toErrorResult(err);
   }
@@ -119,18 +136,6 @@ function parseCreateReport(body: unknown): CreateReportRequest {
     throw new ApiFailure("BAD_REQUEST", "The transcript is empty.");
   }
   if (b.transcript.length > MAX_TRANSCRIPT_CHARS) throw new ApiFailure("BAD_REQUEST", "The transcript is too long.");
-  return { accountId: b.accountId, transcript: b.transcript };
-}
-
-/** The sources a report cites, without access lists, so the UI can show excerpts. */
-function citedSources(report: MeetingReport, permitted: Map<string, SourceRecord>): PublicSource[] {
-  const ids = new Set(
-    [...report.decisions, ...report.commitments, ...report.risks].flatMap((item) => item.citations.map((c) => c.sourceId)),
-  );
-  return [...ids].flatMap((id) => {
-    const source = permitted.get(id);
-    if (!source) return [];
-    const { allowedUserIds: _omit, ...publicSource } = source;
-    return [publicSource];
-  });
+  if (b.previousReportId !== undefined && (typeof b.previousReportId !== "string" || !b.previousReportId.trim())) throw new ApiFailure("BAD_REQUEST", "previousReportId must be text.");
+  return { accountId: b.accountId, transcript: b.transcript, previousReportId: b.previousReportId };
 }

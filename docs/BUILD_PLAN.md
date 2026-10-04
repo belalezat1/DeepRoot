@@ -10,9 +10,9 @@ Use a TypeScript monorepo with `web/` for React/Vite, `api/` for backend code, `
 | Transcription | Azure Speech fast transcription for the short WAV upload; retain a prepared transcript fallback. |
 | Generation | An Azure-sold Foundry chat model available to the student subscription; use a configurable deployment name. Validate a working deployment in the first two hours. |
 | Retrieval | Azure AI Search Free, using account and allowed-user filters on every query. The seeded corpus is small enough for its free-tier limit. |
-| Persistence | Azure Cosmos DB free tier for sources, briefs, reports, ticket drafts, and created issue IDs. |
+| Persistence | Azure Cosmos DB free tier for sources, accounts, reports, ticket drafts, and issue-creation reservations. Latest analysis caching uses memory locally or the existing Cosmos briefs container; integration records use an account-partitioned integrations container. |
 | Authentication | Static Web Apps built-in GitHub sign-in. Allowlist the presenter's identity; verify account access again in every API handler. |
-| Ticket creation | Linear GraphQL `issueCreate`, using a server-side personal API key scoped to the demo team. A prefilled Linear form is the failure fallback. |
+| Ticket creation | Linear GraphQL `issueCreate`, using a server-side personal API key scoped to the demo team. A prefilled Linear form is available when no API attempt has started. Pending attempts reuse a persisted issue UUID. |
 
 Azure for Students provides $100 in credit and lists Azure OpenAI among accessible tools, but the Azure owner must confirm model availability and quota in the actual subscription. Do not choose a Marketplace partner model whose charges cannot use the student credit.
 
@@ -84,17 +84,17 @@ A citation is valid only when its source belongs to the permitted account and it
 
 The backend obtains the user identity from Static Web Apps, never from a client-supplied user ID. It authorizes the account, retrieves only permitted sources, and only then calls the model. Linear receives the reviewed ticket summary and acceptance criteria, plus a protected Deeproot report link; it does not receive full email bodies by default.
 
-For `POST /linear`, disable the button while pending and store the created issue ID on the report. A retry returns the stored issue rather than creating another. Check Linear's GraphQL `errors` field even if HTTP status is 200.
+For `POST /linear`, atomically reserve the reviewed draft, team, and UUID on the report before calling Linear. Disable editing while pending; reconcile the same UUID on retries and store the returned issue link without overwriting source snapshots. Check Linear's GraphQL `errors` field even if HTTP status is 200.
 
 ## 4. Build order and integration gates
 
 | Time | Outcome |
 | --- | --- |
-| Hours 0–2 | Freeze the Acme story, shared types, API shapes, visual wireframe, and demo clip script. Azure owner confirms Speech and an Azure-sold model work in the student subscription. |
+| Hours 0–2 | Freeze the Northstar story, shared types, API shapes, visual wireframe, and demo clip script. Azure owner confirms Speech and an Azure-sold model work in the student subscription. |
 | Hours 2–9 | Four teammates build against shared fixtures and mock adapters. Frontend must be usable before cloud services are connected. |
 | Hours 9–15 | Connect transcription, report generation, retrieval, persistence, and real Linear creation. Run the first full flow. |
 | Hours 15–20 | Deploy, test account isolation and ticket retries, fix citation and loading-state issues. |
-| Hours 20–24 | Rehearse the five-minute demo several times. Keep the prepared transcript and prefilled Linear form ready as explicit fallbacks. |
+| Hours 20–24 | Rehearse the five-minute demo several times. Keep the prepared transcript ready; use a prefilled Linear form only before an API attempt starts. |
 
 **Cut order if time is short:** Reduce decorative motion first, then reduce chat to one grounded question. Preserve transcription, cross-source report, citations, reviewed Linear creation, and the restricted-account check.
 
@@ -118,17 +118,17 @@ Deliver a clickable end-to-end interface that can run with mock responses by hou
 
 ### Teammate 3 — AI workflow owner
 
-Own the cloud-independent AI workflow. Define structured prompts and validation for the pre-meeting brief, post-meeting report, account chat, and Check claim. Consume only `SourceRecord` items already authorized by the backend. Generate the report from the corrected transcript plus relevant Acme emails, preserving the earlier requirement for both US and Canada subsidiaries.
+Own the cloud-independent AI workflow. Define structured prompts and validation for the pre-meeting brief, post-meeting report, account chat, and Check claim. Consume only `SourceRecord` items already authorized by the backend. Generate the report from the corrected transcript plus relevant Northstar emails, preserving the earlier requirement for both Ohio and Pennsylvania tax setup.
 
 Return data matching `MeetingReport`. Require citations for decisions, commitments, and risks; validate source IDs and quotes against the supplied records. If an owner, date, or answer lacks evidence, return null, Unknown, or an explicit uncertainty statement. Ignore instructions embedded inside source content. Produce a Linear draft with specific acceptance criteria and no fabricated implementation details.
 
-Work against the model adapter supplied by Teammate 1. Test the Acme scenario, missing-owner case, unsupported client claim, and an email containing a prompt-injection attempt. Deliver functions Teammate 4 can call directly, plus sample outputs for the frontend.
+Work against the model adapter supplied by Teammate 1. Test the Northstar scenario, missing-owner case, unsupported client claim, and an email containing a prompt-injection attempt. Deliver functions Teammate 4 can call directly, plus sample outputs for the frontend.
 
 ### Teammate 4 — Backend and Linear owner
 
-Own Deeproot's product backend independent of Azure SDKs. Publish the shared TypeScript contracts and synthetic Acme/BetaCo fixtures in the first hour. Implement API handlers that orchestrate Teammate 3's AI functions and Teammate 1's adapters. Check signed-in identity and account permission before every source read, report read, search, chat call, or claim check. Return consistent error shapes for unauthorized access, failed transcription, invalid report output, and unavailable integrations.
+Own Deeproot's product backend independent of Azure SDKs. Publish the shared TypeScript contracts and synthetic Northstar/BetaCo fixtures in the first hour. Implement API handlers that orchestrate Teammate 3's AI functions and Teammate 1's adapters. Check signed-in identity and account permission before every source read, report read, search, chat call, or claim check. Return consistent error shapes for unauthorized access, failed transcription, invalid report output, and unavailable integrations.
 
-Set up the team's Linear workspace and a narrowly scoped personal API key. Implement editable ticket creation through `issueCreate` only after the user confirms; save the returned issue ID and URL and make sequential retries idempotent. Provide a prefilled Linear creation link when the API is unavailable. Seed the two Acme emails, meeting script, and restricted BetaCo record. Own API and integration tests, the prepared transcript fallback, and the timed demo script.
+Set up the team's Linear workspace and a narrowly scoped personal API key. Implement editable ticket creation through `issueCreate` only after the user confirms; save the returned issue ID and URL and coordinate retries across backend instances through conditional Cosmos updates and one persisted issue UUID. Provide a prefilled Linear creation link only before an API attempt starts. Seed the two Northstar emails, meeting script, and restricted BetaCo record. Own API and integration tests, the prepared transcript fallback, and the timed demo script.
 
 Write ordinary TypeScript handlers and Linear modules. Teammate 1 alone wraps and deploys them through Azure Functions. Coordinate handler signatures with Teammates 1 and 2 before expanding implementation.
 
@@ -136,7 +136,7 @@ Write ordinary TypeScript handlers and Linear modules. Teammate 1 alone wraps an
 
 **Automated checks:** Shared types compile; report citations point to real permitted text; unknown fields remain unknown; repeated Linear creation returns the same issue; unauthorized account requests stop before retrieval; and a malicious instruction inside an email cannot override app behavior.
 
-**Manual smoke test:** Run the deployed app at desktop and mobile widths. Upload the clip, correct a transcript word, generate and inspect the report, create the Linear issue, open its link, ask a cited Acme question, check an overconfident reply, and attempt the BetaCo query.
+**Manual smoke test:** Run the deployed app at desktop and mobile widths. Upload the clip, correct a transcript word, generate and inspect the report, create the Linear issue, open its link, ask a cited Northstar question, check an overconfident reply, and attempt the BetaCo query.
 
 **Presentation sequence:**
 

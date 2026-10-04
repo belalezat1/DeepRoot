@@ -10,7 +10,9 @@
   ],
   "scripts": {
     "typecheck": "tsc -b shared demo api && npm run build --workspace web",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:live": "VITE_API_MODE=live npm run build -w web && npm run build:functions -w api",
+    "dev:live": "VITE_API_MODE=live npm run dev -w web"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.3",

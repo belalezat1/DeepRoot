@@ -6,6 +6,7 @@ export type ChatMessage = {
 };
 
 export type GenerateTextRequest = {
+  signal?: AbortSignal;
   messages: ChatMessage[];
   /** JSON Schema for the reply. When set, the reply text is a JSON document matching it. */
   responseSchema?: Record<string, unknown>;

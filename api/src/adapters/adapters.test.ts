@@ -171,3 +171,19 @@ describe("model fallback", () => {
     await expect(gemini.generateText(request)).rejects.toThrow("cut off");
   });
 });
+
+
+describe("Azure AI Search indexing results", () => {
+  const search = new AzureSourceSearch({ endpoint: "https://s.search.windows.net", index: "sources", queryKey: "q", adminKey: "a" });
+  it("rejects per-document failures even when HTTP status is successful", async () => {
+    stubFetch({ status: 200, body: { value: [{ key: "ok", status: true, statusCode: 201 }, { key: "failed", status: false, statusCode: 429 }] } });
+    await expect(search.index([source("ok", "northstar", ["presenter"]), source("failed", "northstar", ["presenter"])]))
+      .rejects.toThrow("did not index every document");
+  });
+  it("rejects missing document results and accepts confirmed successful writes", async () => {
+    stubFetch({ status: 200, body: { value: [] } }, { status: 200, body: { value: [{ key: "ok", status: true, statusCode: 201 }] } });
+    const record = source("ok", "northstar", ["presenter"]);
+    await expect(search.index([record])).rejects.toThrow("did not index every document");
+    await expect(search.index([record])).resolves.toBeUndefined();
+  });
+});

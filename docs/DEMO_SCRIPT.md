@@ -1,79 +1,69 @@
 # Deeproot demo script (5 minutes)
 
-Aim for **4:30** so there's room for a slow page load. Rehearse on the deployed URL, not localhost.
+Rehearse locally before publishing. Use the configured live API with fictional records for the integration proof. Mock mode is a labelled prepared walkthrough and rejects changed-transcript generation. The hosted URL shows only the last deployed version.
 
 ## Before you present
 
-- [ ] Deployed app is open. Sign-in is off, so every visitor acts as the demo presenter: don't share the URL publicly, since anyone with it can create Linear issues.
-- [ ] Second tab: Linear, **Deeproot** team issue list, logged in. Old test issues deleted.
-- [ ] `meeting.wav` is on the laptop (see [demo/meeting-script.md](../demo/meeting-script.md)). Don't download it live.
-- [ ] Load the Northstar page once beforehand so the brief is cached and appears instantly.
-- [ ] Keep the prepared transcript ready to paste (`NORTHSTAR_MEETING_TRANSCRIPT` in `demo/src/fixtures.ts`).
-- [ ] Phone or narrow browser window ready if you want to show mobile.
+- Start the model-only local profile using the [setup guide](../infra/README.md#isolated-local-rehearsal-no-cloud-data-writes). No cloud storage, Search or Linear writes are needed.
+- Run `npm run verify:local -w api` with real model settings. Record any provider failure; scripted tests are not a substitute.
+- Open Northstar, refresh its brief, and inspect each citation. Keep the prepared transcript and a saved report link handy.
+- Open Apps, reset the fictional tracker and sync it before rehearsing the change. Keep a narrow browser window available.
+- For a later hosted presentation, deploy the validated code and separately configure sample exports/credentials. Anyone visiting presenter mode shares the fictional account role. Linear creation is real when enabled.
 
-## 1. The problem and the pre-meeting brief (0:00–0:45)
+## 1. The problem and brief (0:00–0:40)
 
-**Show:** the Northstar account page: email cards and the brief.
+Say: “Client commitments, internal dependencies and payroll readiness live in different systems. Deeproot connects the evidence before we promise a date.”
 
-**Say:**
-> "Account teams lose context between emails, meetings, and internal tools. Here's Northstar Logistics, moving payroll onto our platform. Before the meeting, Deeproot has already read their emails, our internal tracker, and the payroll config dashboard. The brief says the October 15 payroll is at risk, and every line links to its source."
+Show Northstar’s brief, then an internal-tool citation. Explain that the mailbox and records are fictional. Inspect the exact excerpt rather than claiming a connected ADP tenant.
 
-**Click** one citation to show the exact excerpt.
+## 2. Prove the internal-app integration (0:40–1:40)
 
-## 2. The meeting (0:45–1:15)
+Open **Apps → Implementation Tracker → Open sample tool**. Assign `IT-5120` to **Sam**, keeping its tax dependency unresolved. Save in the sample tool.
 
-**Click** Process meeting and upload `meeting.wav`. While Azure Speech transcribes:
+Say: “This changed the upstream system. Deeproot has not imported the edit yet.”
 
-> "This is a 30-second check-in with the client. Listen for who owns the problem."
+Click **Sync into Deeproot**. Show the successful timestamp and accepted/rejected counts. Open Brief and inspect the highlighted changed source. Ask: **“Who currently owns dependency IT-5120?”** Open the citation showing Sam.
 
-When the transcript appears, **fix one word** to show it's editable, then **Generate report**.
+Say: “That answer came from the export fetched over authenticated HTTP, normalized and indexed by the connector. These are fictional tools with real APIs. This proves the workflow, not an ADP tenant connection.”
 
-**If transcription fails:** paste the prepared transcript. Say: "If speech is down, the presenter can paste or correct the transcript; nothing downstream changes."
+If sync or model refresh fails, show the failure status and retry. A successful sync with a failed brief refresh is identified separately. Do not narrate a failed step as success.
 
-## 3. The report and its evidence (1:15–2:45)
+## 3. Meeting-dependent reports (1:40–3:10)
 
-**Show,** in this order:
-1. **Risk:** October 15 payroll may slip for 38 employees. Click the citation; the meeting line and Maya's email open side by side.
-2. **Deadline nobody said out loud:** the Ohio account number is needed by **October 8**, from Jordan's internal email and the tracker.
-3. **Owner: Unknown.** "Sam said 'let me confirm with the team.' That's not an owner, so Deeproot won't invent one."
-4. **Conflict:** the tracker still says go-live October 22; the client says October 15.
+Open Meeting. Upload an MP4 (AAC audio, under 25 MB/13 minutes) when Speech is configured, import a `.txt`, or choose the explicit prepared transcript. Review the text and generate a report.
 
-> "The meeting alone sounded fine. Deeproot connected it to four other sources and found a launch at risk, a hard deadline, and nobody responsible."
+Show the supported commitment, unknown owner/date where appropriate, and an unresolved risk with its source. Add:
 
-## 4. From report to action: Linear (2:45–3:45)
+> Sam: I will send Maya a status update on October 8, 2026.
 
-**Scroll** to the ticket draft. **Edit** one acceptance criterion live.
+Generate another report. Show the previous/current comparison, the new commitment’s owner/date and its reviewed-transcript citation. Older meetings are excluded from default context; prior reports and action reservations remain separate.
 
-> "The AI drafts it, but nothing is created until a person reviews it."
+If the meeting establishes no actionable task, Deeproot shows that and disables Linear creation. It should not manufacture a task to fill the screen.
 
-**Click** Create in Linear. When the **DEE-** link appears, open it in the Linear tab: title, checklist, High priority, link back to the report.
+## 4. Investigate and verify (3:10–4:20)
 
-Optional: click Create again. "Clicking twice returns the same issue, so no duplicates."
+Ask **“What still blocks the October 15 payroll?”**, then **“Who owns that?”** Inspect completed searches/checks and evidence.
 
-**If Linear fails:** click **Open prefilled Linear form** and submit it there. "If the integration is down, the work still isn't lost."
+Verify **“Sam owns the tracker dependency and all state tax setup is complete.”** Show the individual claim cards and aggregate verdict. A contradictory claim makes the whole statement contradicted; an unsupported claim keeps it uncertain. Suggested wording appears only after its own evidence check. Copy it if available.
 
-## 5. Ask and check (3:45–4:30)
+Try **“Help me automate renaming files on my laptop”** and **“How much does Maya take home every month?”** The account-team role refuses coding work and individual pay/tax/bank disclosures, including claimed HR authority. No chatbot write tools exist.
 
-**Chat:** ask *"What do we need from Northstar, and by when?"* The answer cites the October 8 email.
+## 5. Human review and boundaries (4:20–5:00)
 
-**Check claim:** paste *"Everything is on track for your October 15 payroll."* It comes back **Contradicted**, with evidence and a safer rewrite.
+Show the proposed Linear draft and edit an acceptance criterion. In the isolated local rehearsal, Linear is disconnected: show the prefilled form without submitting it. On an explicitly configured presentation, creation is a real reviewed action. Pending attempts stay frozen and reuse the saved identity; reconcile rather than manually duplicating them.
 
-> "Before anyone emails the client, Deeproot catches promises the records don't support."
+Ask about BetaCo. Explain that server account authorization, current source permissions and authoritative reads constrain evidence before it reaches the model. Historical snapshots remain inspectable only while their underlying sources are authorized.
 
-## 6. Security and Azure (4:30–5:00)
+Close: “Evidence across internal systems, a report shaped by the reviewed meeting, and a proposed action a person reviews.” Do not claim enterprise SSO, an ADP integration, production duplicate protection before provider checks, or compliance certification.
 
-**Chat:** ask *"What is BetaCo's payroll plan?"*
+## Recovery choices
 
-> "BetaCo is another client this user can't see. Access is checked on the server before any search or AI call, so it returns nothing: no text, no title, no citation. Even a malicious email telling the AI to leak another customer's data can't do it, because the AI never receives that data."
-
-**Close:**
-> "Deeproot runs on Azure: Static Web Apps and Functions, Speech for transcription, AI Search with per-user filters, Cosmos DB, and Azure OpenAI as the backup model, all deployed from Bicep. Emails and meetings in, a reviewed, owned action out."
-
-## If something breaks
-
-| Problem | What to do |
+| Failure | Honest next step |
 |---|---|
-| Speech fails | Paste the prepared transcript |
-| Report is slow | Keep talking through the brief citations; it usually finishes within 20 seconds |
-| Linear fails | Use the prefilled Linear form link |
-| Model is down | The brief still shows emails. Open a report generated during rehearsal (keep its link handy) and continue from the Linear step |
+| Speech unavailable | Import/paste text or choose the labelled prepared transcript |
+| Model timeout / incomplete verification | Retry; do not display an unfinished answer as verified |
+| Source unavailable / access revoked | Retry an outage; revoked evidence remains unavailable |
+| Connector/indexing failure | Inspect status; retry the stable-ID sync |
+| Linear unconfigured | Review the prefilled form without submitting during local rehearsal |
+| Linear outcome uncertain | Reconcile the existing saved identity |
+| Prepared mock walkthrough | Use its prepared transcript; do not claim custom-text generation |

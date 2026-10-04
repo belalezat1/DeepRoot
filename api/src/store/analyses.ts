@@ -4,7 +4,7 @@ import type { AgentAnalysis } from "@deeproot/shared";
  * Stored agent analyses, implemented by the Azure teammate. The UI, morning brief, action items, and
  * Linear drafts read the latest one instead of calling the model again.
  *
- * - `save`: store the AgentAnalysis as given, keyed by `id`.
+ * - `save`: retain only the latest AgentAnalysis per account AND createdBy user.
  * - `latest`: the newest (by `generatedAt`) for that account AND `createdBy` user, or null. It is
  *   scoped to the user because it was built from their sources. Cosmos example:
  *   SELECT TOP 1 * FROM c WHERE c.accountId = @a AND c.createdBy = @u ORDER BY c.generatedAt DESC
@@ -17,15 +17,16 @@ export interface AnalysisStore {
 }
 
 export class InMemoryAnalysisStore implements AnalysisStore {
-  private readonly analyses: AgentAnalysis[] = [];
+  private readonly analyses = new Map<string, AgentAnalysis>();
 
   async save(analysis: AgentAnalysis) {
-    this.analyses.push(structuredClone(analysis));
+    const key = JSON.stringify([analysis.accountId, analysis.createdBy]);
+    const current = this.analyses.get(key);
+    if (!current || analysis.generatedAt >= current.generatedAt) this.analyses.set(key, structuredClone(analysis));
   }
 
   async latest(accountId: string, userId: string) {
-    const mine = this.analyses.filter((a) => a.accountId === accountId && a.createdBy === userId);
-    const newest = mine.sort((a, b) => b.generatedAt.localeCompare(a.generatedAt))[0];
+    const newest = this.analyses.get(JSON.stringify([accountId, userId]));
     return newest ? structuredClone(newest) : null;
   }
 }

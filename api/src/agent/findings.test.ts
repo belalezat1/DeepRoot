@@ -182,3 +182,16 @@ describe("parseModelOutput", () => {
     expect(parseModelOutput("null")).toBeNull();
   });
 });
+
+
+describe("calendar-date evidence", () => {
+  it.each(["2026-02-29", "2026-04-31", "2026-13-08", "2026-00-08"])("rejects impossible dates: %s", (date) => {
+    expect(dateIsCited(date, [{ sourceId: "s", quote: `Deadline ${date}` }])).toBe(false);
+  });
+  it.each(["October 8, 2025", "Oct. 8 2025", "8 October 2025", "10/8/2025", "2025-10-08"])("rejects conflicting cited years: %s", (quote) => {
+    expect(dateIsCited("2026-10-08", [{ sourceId: "s", quote }])).toBe(false);
+  });
+  it.each(["October 8", "October 8, 2026", "8 October 2026", "10/8/2026", "2026-10-08"])("preserves supported dates: %s", (quote) => {
+    expect(dateIsCited("2026-10-08", [{ sourceId: "s", quote }])).toBe(true);
+  });
+});

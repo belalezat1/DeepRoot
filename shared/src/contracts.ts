@@ -22,13 +22,16 @@ export type SourceRecord = {
   body: string;
   allowedUserIds: string[];
   app?: SourceApp; // set only when kind is "internal_app"
+  /** Trusted connector metadata; never sent to the browser or model. */
+  policy?: { classification: "delivery" | "restricted_payroll"; accessMode: "account" | "source" };
 };
 
 /** A SourceRecord as sent to the browser: the access list stays on the server. */
-export type PublicSource = Omit<SourceRecord, "allowedUserIds">;
+export type PublicSource = Omit<SourceRecord, "allowedUserIds" | "policy"> & { version?: string };
 
 export type Citation = {
   sourceId: string;
+  sourceVersion?: string;
   quote: string; // must appear verbatim in the source body
   startOffset?: number;
   endOffset?: number;
@@ -48,6 +51,7 @@ export type Risk = {
 };
 
 export type TicketPriority = "low" | "medium" | "high";
+export const TICKET_PRIORITIES: readonly TicketPriority[] = ["low", "medium", "high"];
 
 export type TicketDraft = {
   title: string;
@@ -66,13 +70,20 @@ export type MeetingReport = {
   accountId: string;
   transcript: string;
   summary: string;
+  summaryCitations?: Citation[];
+  followUpCitations?: Citation[];
+  ticketCitations?: Citation[];
   decisions: Array<{ text: string; citations: Citation[] }>;
   commitments: Commitment[];
   risks: Risk[]; // added: the PRD (P3) requires risks
   openQuestions: string[];
   suggestedFollowUp: string;
   ticketDraft: TicketDraft;
+  ticketStatus?: "proposed" | "none";
+  previousReportId?: string;
   linearIssue?: LinearIssueRef;
+  /** The accepted draft is frozen while an existing Linear attempt is reconciled. */
+  linearIssueStatus?: "pending" | "created";
   createdAt: string;
   createdBy: string;
 };
@@ -106,11 +117,12 @@ export type AccountBrief = {
 export type AccountBriefResponse = {
   account: PublicAccount;
   emails: PublicSource[]; // newest first
+  sources?: PublicSource[]; // supporting records, including internal apps and meetings
   brief: AccountBrief;
 };
 
 // ---------- POST /api/meetings/transcribe ----------
-// Request: multipart/form-data with fields `accountId` and `audio` (WAV file).
+// Request: multipart/form-data with fields `accountId` and `audio` (normalized WAV audio extracted from the selected MP4 in the browser).
 
 export type TranscriptSegment = {
   startMs: number;
@@ -130,6 +142,7 @@ export type TranscribeResponse = {
 
 export type CreateReportRequest = {
   accountId: string;
+  previousReportId?: string;
   transcript: string; // reviewed/corrected by the presenter
 };
 
@@ -157,14 +170,23 @@ export type ChatRequest = {
   accountId: string;
   question: string;
   reportId?: string;
+  /** Untrusted conversational context, never a source of facts or permission grants. */
+  history?: ChatMessage[];
 };
 
+export type ChatMessage = { role: "user" | "assistant"; content: string };
+export type AssistantRefusal = "out_of_scope" | "restricted";
+
+export type InvestigationStep = { action: "search" | "read" | "compare" | "verify"; label: string; sourceCount?: number };
+
 export type ChatResponse = {
+  steps?: InvestigationStep[];
   answer: string;
   citations: Citation[];
   sources: PublicSource[];
   /** false when the permitted sources do not support an answer. */
   grounded: boolean;
+  responseType?: "answer" | "not_found" | AssistantRefusal;
 };
 
 // ---------- POST /api/claims/check ----------
@@ -174,14 +196,20 @@ export type ClaimVerdict = "supported" | "uncertain" | "contradicted";
 export type ClaimCheckRequest = {
   accountId: string;
   statement: string;
+  reportId?: string;
 };
 
+export type ClaimResult = { claim: string; verdict: ClaimVerdict; explanation: string; citations: Citation[] };
+
 export type ClaimCheckResponse = {
+  claimResults?: ClaimResult[];
+  steps?: InvestigationStep[];
   verdict: ClaimVerdict;
   explanation: string;
   citations: Citation[];
   sources: PublicSource[];
   suggestedRewrite: string;
+  refusalReason?: AssistantRefusal;
 };
 
 // ---------- POST /api/agent/analyze ----------
@@ -219,6 +247,7 @@ export type AgentAnalysis = {
   /** Every source a finding cites (kind, title, author, app, body), so cards and drafts need no extra lookup. */
   sources: PublicSource[];
   analyzedSourceIds: string[]; // every source the model saw
+  sourceFingerprint?: string; // detects edits as well as additions/removals in the current context
   generatedAt: string;
   /** What grounding removed: shown so nobody mistakes a trimmed result for the model's full output. */
   validation: { droppedCitations: number; droppedFindings: number };
@@ -265,3 +294,13 @@ export type ApiError = {
     fallbackUrl?: string;
   };
 };
+
+// Sample tool records and connector receipts contain fictional delivery data only.
+export type DemoAppRecord = { id: string; revision: number; raw: Record<string, unknown> };
+export type IntegrationStatus = {
+  appId: string; name: string; configured: boolean; sample: boolean;
+  accessMode: "account" | "source"; state: "ready" | "not_configured" | "synced" | "failed";
+  lastSuccessfulSync?: string; accepted?: number; rejected?: number; error?: string;
+  changedSourceIds?: string[];
+};
+export type IntegrationsResponse = { integrations: IntegrationStatus[]; demoAppsEnabled: boolean };

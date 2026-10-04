@@ -32,6 +32,7 @@ describe("Implementation Tracker", () => {
         "Notes: State tax mapping incomplete. Waiting on client's Ohio withholding account number. PA local tax codes missing for 14 employees.",
       ].join("\n"),
       allowedUserIds: [DEMO_USERS.presenter],
+      policy: { classification: "delivery", accessMode: "account" },
       app: { id: "impl-tracker", name: "Implementation Tracker" },
     });
   });
@@ -83,6 +84,7 @@ describe("Payroll Configuration Dashboard (second app, same engine)", () => {
         "Employees affected: 24",
       ].join("\n"), // no Comment line: the field is absent and has no ifMissing
       allowedUserIds: [DEMO_USERS.presenter],
+      policy: { classification: "delivery", accessMode: "account" },
       app: { id: "payroll-config", name: "Payroll Configuration Dashboard" },
     });
   });

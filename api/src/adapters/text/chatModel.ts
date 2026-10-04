@@ -8,6 +8,7 @@ export function createChatModel(generator: TextGenerator = createTextGenerator()
     async complete(req) {
       const start = Date.now();
       const result = await generator.generateText({
+        signal: req.signal,
         messages: [
           { role: "system", content: req.system },
           { role: "user", content: req.user },

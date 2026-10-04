@@ -31,7 +31,7 @@ export function toBrief(response: AccountBriefResponse): Brief {
     brief: response.brief.summary,
     items: response.brief.items,
     openQuestions: response.brief.openQuestions,
-    sources: response.emails,
+    sources: [...new Map([...response.emails, ...(response.sources ?? [])].map((source) => [source.id, source])).values()],
   };
 }
 

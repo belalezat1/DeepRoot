@@ -102,3 +102,22 @@ describe("POST /api/meetings", () => {
     expect((await handleSaveMeeting({ user: null, body }, deps())).status).toBe(401);
   });
 });
+
+
+describe("bounded ingestion writes", () => {
+  it("runs at most eight writes concurrently, waits for completion, and keeps stable upserts", async () => {
+    const d = deps();
+    let active = 0, maxActive = 0;
+    const original = d.sources.save.bind(d.sources);
+    vi.spyOn(d.sources, "save").mockImplementation(async (source) => {
+      active++; maxActive = Math.max(active, maxActive);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      await original(source); active--;
+    });
+    const emails = Array.from({ length: 25 }, (_, i) => ({ ...NORTHSTAR_CUSTOMER_EMAIL, messageId: `batch-${i}` }));
+    for (let attempt = 0; attempt < 2; attempt++) expect((await handleIngestEmails({ user, body: { emails } }, d)).status).toBe(200);
+    expect(maxActive).toBe(8);
+    expect(active).toBe(0);
+    expect(await stored(d, "northstar")).toHaveLength(25);
+  });
+});

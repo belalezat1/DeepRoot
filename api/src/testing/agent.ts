@@ -5,21 +5,28 @@ import type { ChatModel, ChatModelRequest } from "../agent/model.js";
 import { meetingToSource } from "../ingest/meeting.js";
 import { buildSeedSources } from "../ingest/seed.js";
 
-export type ScriptedModel = ChatModel & { calls: ChatModelRequest[] };
+export type ScriptedModel = ChatModel & { calls: ChatModelRequest[]; allCalls: ChatModelRequest[] };
 
-/** Replies in order: a string is returned, an Error is thrown. Records every request. */
+/** Draft replies in order. Auxiliary scope/verifier fixtures are explicit test-only responses.
+ * calls contains draft/retry requests; allCalls records every model phase. These do not test model intelligence.
+ */
 export function scriptedModel(...replies: Array<string | Error>): ScriptedModel {
-  const calls: ChatModelRequest[] = [];
-  return {
-    calls,
-    async complete(req) {
-      calls.push(req);
-      const reply = replies[calls.length - 1];
-      if (reply === undefined) throw new Error("scriptedModel: no reply left");
-      if (reply instanceof Error) throw reply;
-      return reply;
-    },
-  };
+  const calls: ChatModelRequest[] = [], allCalls: ChatModelRequest[] = [];
+  let last: Record<string, unknown> = {};
+  return { calls, allCalls, async complete(req) {
+    allCalls.push(req);
+    if (req.system.includes("phase: scope/planning")) return JSON.stringify({ scope: "allowed", queries: [], spans: [] });
+    if (req.system.includes("phase: evidence verification")) {
+      const { candidates } = JSON.parse(req.user);
+      return JSON.stringify({ results: candidates.map((c: { id: string; citations: unknown[] }) => ({ id: c.id, verdict: c.citations.length ? c.id === "rewrite" ? "supported" : last.verdict ?? "supported" : "uncertain", explanation: last.explanation ?? "Fixture evidence check.", citations: c.citations })) });
+    }
+    calls.push(req);
+    const reply = replies[calls.length - 1];
+    if (reply === undefined) throw new Error("scriptedModel: no reply left");
+    if (reply instanceof Error) throw reply;
+    try { last = JSON.parse(reply); } catch { last = {}; }
+    return reply;
+  } };
 }
 
 export const reply = (findings: unknown[], summary = "Summary.") => JSON.stringify({ summary, findings });

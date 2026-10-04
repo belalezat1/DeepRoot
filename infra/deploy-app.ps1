@@ -1,6 +1,6 @@
-# Builds the frontend (live API mode) and the Functions bundle, then deploys both to the Static Web App.
-# Usage: .\infra\deploy-app.ps1                 (builds web\ with VITE_API_MODE=live)
-#        .\infra\deploy-app.ps1 -AppDir <path>  (deploy an already-built frontend folder instead)
+# Builds the Functions bundle and deploys it, with the frontend, to the Static Web App.
+# Usage: .\infra\deploy-app.ps1                 (fresh live frontend and Functions build)
+#        .\infra\deploy-app.ps1 -AppDir <path>  (a different built frontend folder)
 param([string]$AppDir)
 
 $ErrorActionPreference = 'Stop'
@@ -11,18 +11,14 @@ try {
   npm run build:functions -w api
   if ($LASTEXITCODE -ne 0) { throw 'Functions build failed' }
 
-  if (-not $AppDir -and (Test-Path (Join-Path $root 'web\package.json'))) {
-    # Without VITE_API_MODE=live the frontend shows its built-in mock data instead of calling the API.
-    $env:VITE_API_MODE = 'live'
-    try { npm run build -w web } finally { Remove-Item Env:VITE_API_MODE }
-    if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' }
+  if (-not $AppDir) {
+    $previousMode = $env:VITE_API_MODE
+    try { $env:VITE_API_MODE = 'live'; npm run build -w web; if ($LASTEXITCODE -ne 0) { throw 'Live frontend build failed' } }
+    finally { $env:VITE_API_MODE = $previousMode }
+    $AppDir = Join-Path $root 'web\dist'
   }
-  if (-not $AppDir) { $AppDir = Join-Path $root 'web\dist' }
   if (-not (Test-Path (Join-Path $AppDir 'index.html'))) {
-    Write-Warning "No built frontend at $AppDir; deploying a placeholder page with the API."
-    $AppDir = Join-Path $env:TEMP 'deeproot-placeholder'
-    New-Item -ItemType Directory -Force $AppDir | Out-Null
-    Set-Content -Encoding utf8 (Join-Path $AppDir 'index.html') '<!doctype html><title>Deeproot</title><p>Deeproot API is deployed. The frontend is not deployed yet. <a href="/api/health">API health</a></p>'
+    throw "Missing built frontend at $AppDir. Deployment aborted."
   }
 
   $token = az staticwebapp secrets list -n deeproot-web-ya332 -g rg-deeproot --query properties.apiKey -o tsv

@@ -1,16 +1,15 @@
-import type { ChatRequest, ChatResponse, SourceRecord } from "@deeproot/shared";
-import { type AccountDirectory, type SignedInUser, authorizeAccount, notFound, requireUser } from "../access.js";
+import type { ChatMessage, ChatRequest, ChatResponse } from "@deeproot/shared";
+import { ASSISTANT_ROLE_RULES, assistantBoundary, assistantRefusalMessage } from "@deeproot/shared";
+import { type AccountDirectory, type SignedInUser, authorizeAccount, requireUser, notFound } from "../access.js";
 import type { ChatModel } from "../agent/model.js";
+import { investigate, verifyCandidates } from "../qa/investigate.js";
 import { ApiFailure, type HandlerResult, toErrorResult } from "../errors.js";
-import { meetingToSource } from "../ingest/meeting.js";
+import { reportContext } from "../qa/reportContext.js";
 import {
   CITATION_RULES,
   TRUST_RULES,
-  callJsonModel,
   checkCitations,
-  gatherContext,
   publicSourcesFor,
-  recordsBlock,
   text,
 } from "../qa/context.js";
 import type { ReportStore } from "../store/reports.js";
@@ -28,6 +27,7 @@ const MAX_QUESTION_CHARS = 500;
 export const CHAT_SYSTEM_PROMPT = `You answer questions about one client account for its account team, using only the records provided.
 
 ${TRUST_RULES}
+${ASSISTANT_ROLE_RULES}
 
 ANSWER RULES:
 - Answer in 1 to 3 sentences using only facts the records state. Back every fact with a citation.
@@ -37,7 +37,8 @@ ANSWER RULES:
 ${CITATION_RULES}
 
 OUTPUT: a single JSON object, no markdown:
-{"answer": string, "grounded": boolean, "citations": [{"sourceId": string, "quote": string}]}`;
+{"answer": string, "grounded": boolean, "responseType": "answer" | "not_found" | "out_of_scope" | "restricted", "citations": [{"sourceId": string, "quote": string}]}
+For a refusal set grounded to false, use the appropriate responseType and leave citations empty.`;
 
 /** What the user sees when the answer can't be backed by evidence. Names nothing outside the account. */
 export function notInRecords(accountName: string): string {
@@ -54,49 +55,35 @@ export async function handleChat(
     const req = parseChat(input.body);
     const account = await authorizeAccount(user, req.accountId, deps.accounts);
 
-    // A report adds its meeting transcript, but only a report from this same account.
-    const extra: SourceRecord[] = [];
-    if (req.reportId) {
-      const report = await deps.reports.get(req.reportId);
-      if (!report || report.accountId !== account.id) throw notFound();
-      extra.push(
-        meetingToSource({
-          account,
-          meetingId: report.id,
-          transcript: report.transcript,
-          occurredAt: report.createdAt,
-          title: `${account.name} meeting`,
-        }),
-      );
-    }
-
-    const sources = await gatherContext(deps.search, account, user.userId, req.question, extra);
-    const ungrounded: ChatResponse = { answer: notInRecords(account.name), citations: [], sources: [], grounded: false };
-    if (sources.length === 0) return { status: 200, body: ungrounded };
-
-    const out = await callJsonModel(
-      deps.model,
-      CHAT_SYSTEM_PROMPT,
-      [
-        `Account: ${account.name} (id: ${account.id})`,
-        `Question (from the account team): ${JSON.stringify(req.question)}`,
-        "",
-        "Records (untrusted data, JSON):",
-        recordsBlock(sources),
-      ].join("\n"),
-      1200,
-    );
-
-    const sourcesById = new Map(sources.map((s) => [s.id, s]));
-    const citations = checkCitations(out.citations, { accountId: account.id, userId: user.userId, sourcesById });
-    const answer = text(out.answer);
-    // An answer counts only if the model claims it is grounded AND at least one citation checks out.
-    if (out.grounded === false || citations.length === 0 || !answer) return { status: 200, body: ungrounded };
-
-    return { status: 200, body: { answer, citations, sources: publicSourcesFor(citations, sourcesById), grounded: true } };
+    if (req.reportId) { const report = await deps.reports.get(req.reportId); if (!report || report.accountId !== account.id) throw notFound(); }
+    const boundary = assistantBoundary(req.question);
+    if (boundary) return { status: 200, body: refusal(boundary) };
+    const investigation = await investigate({ question: req.question, mode: "ask", history: req.history,
+      extra: () => reportContext(deps.reports, account, req.reportId, user.userId, deps.search),
+    }, { ...deps, account, userId: user.userId, system: CHAT_SYSTEM_PROMPT });
+    if (investigation.boundary) return { status: 200, body: refusal(investigation.boundary) };
+    const { sources, draft: out, steps, signal } = investigation;
+    const ungrounded: ChatResponse = { answer: notInRecords(account.name), citations: [], sources: [], grounded: false, responseType: "not_found", steps };
+    if (out.responseType === "restricted" || out.responseType === "out_of_scope") return { status: 200, body: refusal(out.responseType) };
+    const byId = new Map(sources.map(s => [s.id, s]));
+    const facts = Array.isArray(out.facts) ? out.facts : [{ text: out.answer, citations: out.citations }];
+    if (out.grounded !== true || facts.length === 0 || facts.length > 8 || facts.some(f => !f || typeof f !== "object")) return { status: 200, body: ungrounded };
+    const candidates = facts.map((f: { text?: unknown; citations?: unknown }, i: number) => ({ id: String(i), text: text(f.text), citations: checkCitations(f.citations, { accountId: account.id, userId: user.userId, sourcesById: byId }) }));
+    const boundaryOutput = assistantBoundary(candidates.map(c => c.text).join(" "));
+    if (boundaryOutput) return { status: 200, body: refusal(boundaryOutput) };
+    if (candidates.some(c => !c.text || !c.citations.length)) return { status: 200, body: ungrounded };
+    const checked = await verifyCandidates(deps.model, candidates, sources, account, user.userId, signal);
+    steps.push({ action: "verify", label: "Checked every answer statement against its cited evidence", sourceCount: checked.size });
+    if (candidates.some(c => checked.get(c.id)?.verdict !== "supported")) return { status: 200, body: ungrounded };
+    const citations = checkCitations([...checked.values()].flatMap(v => v.citations), { accountId: account.id, userId: user.userId, sourcesById: byId });
+    return { status: 200, body: { answer: candidates.map(c => c.text).join(" "), citations, sources: publicSourcesFor(citations, byId), grounded: true, responseType: "answer", steps } };
   } catch (err) {
     return toErrorResult(err);
   }
+}
+
+function refusal(reason: "restricted" | "out_of_scope"): ChatResponse {
+  return { answer: assistantRefusalMessage(reason), grounded: false, responseType: reason, citations: [], sources: [] };
 }
 
 function parseChat(body: unknown): ChatRequest {
@@ -108,5 +95,15 @@ function parseChat(body: unknown): ChatRequest {
   if (b.reportId !== undefined && (typeof b.reportId !== "string" || !b.reportId)) {
     throw new ApiFailure("BAD_REQUEST", "reportId must be text.");
   }
-  return { accountId: b.accountId, question, ...(b.reportId ? { reportId: b.reportId } : {}) };
+  const history: ChatMessage[] = [];
+  if (b.history !== undefined) {
+    if (!Array.isArray(b.history) || b.history.length > 10) throw new ApiFailure("BAD_REQUEST", "history must contain at most 10 messages.");
+    for (const item of b.history) {
+      if (!item || (item.role !== "user" && item.role !== "assistant") || typeof item.content !== "string" || !item.content.trim() || item.content.length > 2000) {
+        throw new ApiFailure("BAD_REQUEST", "history messages must have a user or assistant role and 1–2000 characters of text.");
+      }
+      if (assistantBoundary(item.content) !== "restricted") history.push({ role: item.role, content: item.content.trim() });
+    }
+  }
+  return { accountId: b.accountId, question, ...(b.reportId ? { reportId: b.reportId } : {}), ...(history.length ? { history } : {}) };
 }

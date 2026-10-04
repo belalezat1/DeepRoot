@@ -22,6 +22,8 @@ param linearApiKey string
 
 param linearTeamId string
 param linearTeamKey string
+@secure()
+param connectorSettings object
 param demoUserId string
 
 var openAiApiVersion = '2024-10-21'
@@ -30,6 +32,7 @@ var cosmosDatabaseName = 'deeproot'
 // Partition keys match how the API reads each container: sources and briefs by account,
 // reports and accounts by their own ID (ReportStore.get and AccountDirectory.getAccount take only an ID).
 var cosmosContainers = [
+  { name: 'integrations', partitionKey: '/accountId' }
   { name: 'sources', partitionKey: '/accountId' }
   { name: 'briefs', partitionKey: '/accountId' }
   { name: 'reports', partitionKey: '/id' }
@@ -189,6 +192,7 @@ resource staticWebAppSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
       COSMOS_DATABASE: cosmosDatabaseName
       APP_BASE_URL: 'https://${staticWebApp.properties.defaultHostname}'
     },
+    connectorSettings,
     empty(geminiApiKey) ? {} : { GEMINI_API_KEY: geminiApiKey },
     empty(linearApiKey) ? {} : { LINEAR_API_KEY: linearApiKey },
     empty(linearTeamId) ? {} : { LINEAR_TEAM_ID: linearTeamId },
