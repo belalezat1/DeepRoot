@@ -29,16 +29,16 @@ if ($siteId) {
   $existingSettings = (Invoke-Az staticwebapp appsettings list -n deeproot-web-ya332 -g rg-deeproot -o json | ConvertFrom-Json).properties
 }
 
-$deployArgs = @(
-  '--location', $Location,
-  '--template-file', (Join-Path $infra 'main.bicep'),
-  '--parameters', (Join-Path $infra 'main.bicepparam')
-)
+# Every parameter goes in one temporary JSON file: the CLI refuses to mix a .bicepparam file with a JSON
+# parameter file, and a file keeps keys off the command line. Start from main.bicepparam, compiled to JSON.
+$compiled = Invoke-Az bicep build-params --file (Join-Path $infra 'main.bicepparam') --stdout | Out-String | ConvertFrom-Json
+$parameters = ($compiled.parametersJson | ConvertFrom-Json).parameters
+
 foreach ($name in $externalSettings.Keys) {
   $value = [Environment]::GetEnvironmentVariable($name)
   if (-not $value -and $existingSettings) { $value = $existingSettings.$name }
   if (-not $value) { Write-Warning "$name is not set; it will be left out of the app settings." }
-  $deployArgs += '--parameters', "$($externalSettings[$name])=$value"
+  $parameters | Add-Member -Force -NotePropertyName $externalSettings[$name] -NotePropertyValue @{ value = "$value" }
 }
 
 # Preserve trusted routing and connector credentials. Secure parameter file avoids exposing values in logs.
@@ -54,9 +54,20 @@ if ($connectorSettings.ContainsKey('CONNECTOR_HTTP_JSON')) {
     if ($name) { $value = [Environment]::GetEnvironmentVariable($name); if ($null -eq $value -and $existingSettings) { $value = $existingSettings.$name }; if ($null -ne $value) { $connectorSettings[$name] = $value } }
   }
 }
+$parameters | Add-Member -Force -NotePropertyName connectorSettings -NotePropertyValue @{ value = $connectorSettings }
+
 $connectorFile = Join-Path ([IO.Path]::GetTempPath()) ('deeproot-settings-' + [guid]::NewGuid().ToString() + '.json')
-@{ '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'; contentVersion = '1.0.0.0'; parameters = @{ connectorSettings = @{ value = $connectorSettings } } } | ConvertTo-Json -Depth 10 | Set-Content $connectorFile
-$deployArgs += '--parameters', ('@' + $connectorFile)
+$parametersJson = @{
+  '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'
+  contentVersion = '1.0.0.0'
+  parameters = $parameters
+} | ConvertTo-Json -Depth 20
+[IO.File]::WriteAllText($connectorFile, $parametersJson, (New-Object System.Text.UTF8Encoding $false))
+$deployArgs = @(
+  '--location', $Location,
+  '--template-file', (Join-Path $infra 'main.bicep'),
+  '--parameters', ('@' + $connectorFile)
+)
 try {
 if ($WhatIf) {
   Invoke-Az deployment sub what-if @deployArgs --result-format ResourceIdOnly
