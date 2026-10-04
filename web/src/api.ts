@@ -13,7 +13,7 @@ import { SAMPLE_REPORT_ID } from '@deeproot/demo';
 import { ACCOUNT_ID, answerDemoQuestion, checkDemoClaim, demoBriefResponse, DEMO_TRANSCRIPT, makeDemoReport, reportSources } from './demo';
 import { ApiError, toBrief } from './model';
 import type { Brief } from './model';
-import { prepareMeetingAudio } from './meetingAudio';
+import { combineTranscriptions, prepareMeetingAudio } from './meetingAudio';
 
 export const isLive = import.meta.env.VITE_API_MODE === 'live';
 const pause = () => new Promise((resolve) => window.setTimeout(resolve, 520));
@@ -78,10 +78,15 @@ export const api = {
 
   async transcribe(accountId: string, file: File): Promise<TranscribeResponse> {
     if (isLive) {
-      const form = new FormData();
-      form.append('accountId', accountId);
-      form.append('audio', await prepareMeetingAudio(file));
-      return jsonRequest<TranscribeResponse>('/api/meetings/transcribe', { method: 'POST', body: form });
+      // Long recordings arrive as several parts; each is its own small request, sent in order.
+      const results: TranscribeResponse[] = [];
+      for (const part of await prepareMeetingAudio(file)) {
+        const form = new FormData();
+        form.append('accountId', accountId);
+        form.append('audio', part);
+        results.push(await jsonRequest<TranscribeResponse>('/api/meetings/transcribe', { method: 'POST', body: form }));
+      }
+      return combineTranscriptions(results);
     }
     await pause();
     return { transcript: DEMO_TRANSCRIPT, segments: [], origin: 'prepared-fallback' };

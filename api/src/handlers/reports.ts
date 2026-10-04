@@ -31,7 +31,12 @@ export type ReportDeps = {
   newId?: () => string;
 };
 
-const MAX_TRANSCRIPT_CHARS = 20_000;
+/**
+ * Meetings of any length are supported, so this only guards storage: the transcript is saved in both the
+ * report and the meeting source, and Cosmos DB caps one document at 2 MB. 500,000 characters is roughly
+ * 8-9 hours of conversation.
+ */
+const MAX_TRANSCRIPT_CHARS = 500_000;
 
 /** POST /api/reports: turn a reviewed transcript into a saved, cited report. */
 export async function handleCreateReport(

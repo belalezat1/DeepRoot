@@ -355,7 +355,7 @@ function App() {
               </div>
               {transcriptionOrigin && <p className="transcription-origin" role="status">{transcriptionOrigin === 'azure-speech' ? 'Transcription complete. Review it below.' : 'Prepared transcript loaded. Review it below.'}</p>}
               <div className="fallback-row"><span>For the demo:</span><button type="button" disabled={busy !== null} onClick={() => { setTranscript(DEMO_TRANSCRIPT); setTranscriptionOrigin('prepared-fallback'); setMeetingError(null); setUploadedName('Prepared transcript'); }}>Use prepared transcript</button></div>
-              <p className="context-note">{isLive ? 'MP4 clips under 25 MB and 13 minutes. Audio is extracted in your browser; only audio is sent for transcription. If Speech is unavailable, retry or import a transcript.' : 'Mock mode uses a prepared transcript for MP4 uploads and a sample report. Use live mode to analyze your own meeting.'}</p>
+              <p className="context-note">{isLive ? 'MP4 recordings of any length. Audio is extracted in your browser and sent in 5-minute parts; video never leaves your device. If Speech is unavailable, retry or import a transcript.' : 'Mock mode uses a prepared transcript for MP4 uploads and a sample report. Use live mode to analyze your own meeting.'}</p>
               <ErrorNotice error={meetingError} />
             </article>
             <article className="surface transcript-card"><span className="fox-perch fox-perch--card" data-fox-perch aria-hidden="true" />
